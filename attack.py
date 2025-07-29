@@ -36,9 +36,6 @@ def main(mArgs, rArgs):
         csv.write("index,DLG loss,DLG MSE,iDLG loss,iDLG MSE\n")
 
     lr = 1
-    num_dummy = 1
-    num_iterations = 300
-    num_exp = 100
     use_cuda = torch.cuda.is_available()
     device = f'cuda:{mArgs.gpus[0]}' if use_cuda else 'cpu'
 
@@ -59,7 +56,7 @@ def main(mArgs, rArgs):
 
     idx_shuffle = np.random.default_rng(123).permutation(len(dst))
     ''' train DLG and iDLG '''
-    for idx_net in range(0, num_exp):
+    for idx_net in range(0, rArgs.num_exp):
         net = init_model(device, mArgs, num_classes, hidden, channel)
         net = net.to(device)
         criterion = nn.CrossEntropyLoss().to(device)
@@ -67,16 +64,16 @@ def main(mArgs, rArgs):
         if not rArgs.single:
             idx_shuffle = np.random.default_rng(123).permutation(len(dst))
 
-        print(f'Running {idx_net}|{num_exp} experiment')
+        print(f'Running {idx_net}|{rArgs.num_exp} experiment')
         for method in ['iDLG', "DLG"]:
             if rArgs.single:
                 print(f'{method}, Trying to generate 1 image on [{idx_shuffle[idx_net]}]')
             else:
-                print(f'{method}, Try to generate {num_dummy} images')
+                print(f'{method}, Try to generate {rArgs.num_dummy} images')
 
             imidx_list = []
 
-            for imidx in range(num_dummy):
+            for imidx in range(rArgs.num_dummy):
                 if rArgs.single:
                     idx = idx_shuffle[idx_net]
                 else:
@@ -129,7 +126,7 @@ def main(mArgs, rArgs):
             train_iters = []
 
             print('lr =', lr)
-            for iteration in range(num_iterations):
+            for iteration in range(rArgs.num_iterations):
                 def closure():
                     optimizer.zero_grad()
                     pred = net(dummy_data)
@@ -157,10 +154,10 @@ def main(mArgs, rArgs):
                 if iteration % rArgs.printFreq == 0:
                     current_time = str(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()))
                     print(current_time, iteration, 'loss = %.8f, mse = %.8f' % (current_loss, mses[-1]))
-                    history.append([tp(dummy_data[imidx].cpu()) for imidx in range(num_dummy)])
+                    history.append([tp(dummy_data[imidx].cpu()) for imidx in range(rArgs.num_dummy)])
                     history_iters.append(iteration)
 
-                    for imidx in range(num_dummy):
+                    for imidx in range(rArgs.num_dummy):
                         plt.figure(figsize=(12, 8))
                         plt.subplot(3, 10, 1)
                         plt.imshow(tp(gt_data[imidx].cpu()))

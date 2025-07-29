@@ -31,6 +31,9 @@ class RunArgs:
         self.single = True
         self.printFreq = 50
         self.resultPath = resultPath
+        self.num_dummy = 1
+        self.num_iterations = 300
+        self.num_exp = 1000
 
 if __name__ == '__main__':
     p_values = [0.1, 0.6, 0.9]  # 1e-10
