@@ -6,7 +6,7 @@ class ModelArgs:
     def __init__(self, p, mu):
         self.sparsity_folder = "Layer_Sparsity"
         self.network = "lenet"  # lenet, resnet20
-        self.zero = True
+        self.zero = False
         self.sparsity = p  # p
         self.sparsity_ckpt = f"zo_grasp_{self.sparsity}"
         self.lr = 0.1
@@ -29,7 +29,7 @@ class ModelArgs:
 class RunArgs:
     def __init__(self, resultPath):
         self.single = True
-        self.printFreq = 50
+        self.printFreq = 10
         self.resultPath = resultPath
         self.num_dummy = 1
         self.num_iterations = 300
@@ -50,7 +50,6 @@ if __name__ == '__main__':
     mu_values = [5e-3]
 
     mArgs = ModelArgs(p_values, mu_values)
-    rArgs = RunArgs(os.path.join('.', f'results/baseline/zo').replace('\\', '/'))
 
     # for gpu cge
     # for p_value in p_values:
@@ -63,5 +62,5 @@ if __name__ == '__main__':
     for p_value in p_values:
         for mu_value in mu_values:
             mArgs = ModelArgs(p_value, mu_value)
-            rArgs = RunArgs(os.path.join('.', f'results/baseline/zo').replace('\\', '/'))
+            rArgs = RunArgs(os.path.join('.', f'results/baseline/fo').replace('\\', '/'))
             main(mArgs, rArgs)
