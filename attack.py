@@ -7,8 +7,9 @@ import os
 from torch.distributed import rpc
 
 import sys
-
 sys.path.append(".")
+
+import closures
 import optimizers as opt
 from tools import *
 from init_util import dataset_loader, init_model
@@ -127,23 +128,7 @@ def main(mArgs, rArgs):
 
             print('lr =', lr)
             for iteration in range(rArgs.num_iterations):
-                def closure():
-                    optimizer.zero_grad()
-                    pred = net(dummy_data)
-                    if method == 'DLG':
-                        dummy_loss = - torch.mean(
-                            torch.sum(torch.softmax(dummy_label.float(), -1) * torch.log(torch.softmax(pred, -1)),
-                                      dim=-1))
-                    elif method == 'iDLG':
-                        dummy_loss = criterion(pred, label_pred)
-                    dummy_dy_dx = torch.autograd.grad(dummy_loss, net.parameters(), create_graph=True)
-                    # dummy_dy_dx = cge(f, params_dict, mask_dict, mArgs.zoo_step_size, net, dummy_data, dummy_label, F.cross_entropy)
-
-                    grad_diff = 0
-                    for gx, gy in zip(dummy_dy_dx, original_dy_dx):
-                        grad_diff += ((gx - gy) ** 2).sum()
-                    grad_diff.backward()
-                    return grad_diff
+                closure = closures.BaseClosure(optimizer, net, criterion, method, dummy_data, dummy_label, label_pred, original_dy_dx)
 
                 optimizer.step(closure)
                 current_loss = closure().item()
