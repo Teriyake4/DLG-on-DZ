@@ -3,10 +3,10 @@ import os
 from attack import main, init_process
 
 class ModelArgs:
-    def __init__(self, p, mu):
+    def __init__(self, p, mu, alpha):
         self.sparsity_folder = "Layer_Sparsity"
         self.network = "lenet"  # lenet, resnet20
-        self.zero = False
+        self.zero = True
         self.sparsity = p  # p
         self.sparsity_ckpt = f"zo_grasp_{self.sparsity}"
         self.lr = 0.1
@@ -25,6 +25,7 @@ class ModelArgs:
         self.mask_shuffle_interval = 5
         self.log = True
         self.sample_size = 10000
+        self.alpha = alpha
 
 class RunArgs:
     def __init__(self, resultPath):
@@ -36,20 +37,21 @@ class RunArgs:
         self.num_exp = 1000
 
 if __name__ == '__main__':
-    p_values = [0.1, 0.6, 0.9]  # 1e-10
+    p = [0.1, 0.6, 0.9]  # 1e-10
     default_mu = 5e-3
     delta_mu_values = [10, 5, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
     num_mus = len(delta_mu_values)
-    mu_values = []
+    mu = []
     for i in range(num_mus):
         mu_value = default_mu + delta_mu_values[i]
-        mu_values.append(mu_value)
-        mu_values.append(-mu_value)
+        mu.append(mu_value)
+        mu.append(-mu_value)
 
-    p_values = [0.9]
-    mu_values = [5e-3]
+    p = [1]
+    mu = [5e-3]
+    alpha = []
 
-    mArgs = ModelArgs(p_values, mu_values)
+    mArgs = ModelArgs(p, mu)
 
     # for gpu cge
     # for p_value in p_values:
@@ -59,8 +61,9 @@ if __name__ == '__main__':
     #         # init_process(0, world_size, args)
               # mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
 
-    for p_value in p_values:
-        for mu_value in mu_values:
-            mArgs = ModelArgs(p_value, mu_value)
-            rArgs = RunArgs(os.path.join('.', f'results/baseline/fo').replace('\\', '/'))
-            main(mArgs, rArgs)
+    for p_value in p:
+        for mu_value in mu:
+            for alpha_value in alpha:
+                mArgs = ModelArgs(p_value, mu_value, alpha_value)
+                rArgs = RunArgs(os.path.join('.', f'results/baseline/zo').replace('\\', '/'))
+                main(mArgs, rArgs)
