@@ -73,7 +73,6 @@ def main(mArgs, rArgs):
                 print(f'{method}, Try to generate {rArgs.num_dummy} images')
 
             imidx_list = []
-
             for imidx in range(rArgs.num_dummy):
                 if rArgs.single:
                     idx = idx_shuffle[idx_net]
@@ -104,8 +103,9 @@ def main(mArgs, rArgs):
                 out = net(gt_data)
                 y = criterion(out, gt_label)
                 dy_dx = torch.autograd.grad(y, net.parameters())
+            
 
-            original_dy_dx = [grad.detach().clone() for grad in dy_dx]
+            zo_dy_dx = [grad.detach().clone() for grad in dy_dx]
 
             # generate dummy data and label
             dummy_data = torch.randn(gt_data.size()).to(device).requires_grad_(True)
@@ -118,48 +118,52 @@ def main(mArgs, rArgs):
                 optimizer = torch.optim.LBFGS([dummy_data, ], lr=lr)
                 # predict the ground-truth label
                 # label_pred = gt_label
-                label_pred = torch.argmin(torch.sum(original_dy_dx[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False)
+                label_pred = torch.argmin(torch.sum(zo_dy_dx[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False)
 
             history = []
             history_iters = []
             losses = []
             mses = []
             train_iters = []
-
+            
+            vanilla_dy_dx = torch.autograd.grad(y, net.parameters())
             print('lr =', lr)
-            for iteration in range(rArgs.num_iterations):
-                closure = closures.BaseClosure(optimizer, net, criterion, method, dummy_data, dummy_label, label_pred, original_dy_dx)
+            for alpha in alpha_grid:
+                zo_dy_dx_nudge = [zo_dy_dx[i] + (vanilla_dy_dx[i] - zo_dy_dx[i]) * alpha for i in range(len(zo_dy_dx))]
+                zo_dy_dx_nudge = [grad.detach().clone() for grad in zo_dy_dx_nudge]
+                for iteration in range(rArgs.num_iterations):
+                    closure = closures.BaseClosure(optimizer, net, criterion, method, dummy_data, dummy_label, label_pred, zo_dy_dx_nudge)
 
-                optimizer.step(closure)
-                current_loss = closure().item()
-                train_iters.append(iteration)
-                losses.append(current_loss)
-                mses.append(torch.mean((dummy_data - gt_data) ** 2).item())
+                    optimizer.step(closure)
+                    current_loss = closure().item()
+                    train_iters.append(iteration)
+                    losses.append(current_loss)
+                    mses.append(torch.mean((dummy_data - gt_data) ** 2).item())
 
-                if iteration % rArgs.printFreq == 0:
-                    current_time = str(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()))
-                    print(current_time, iteration, 'loss = %.8f, mse = %.8f' % (current_loss, mses[-1]))
-                    history.append([tp(dummy_data[imidx].cpu()) for imidx in range(rArgs.num_dummy)])
-                    history_iters.append(iteration)
+                    if iteration % rArgs.printFreq == 0:
+                        current_time = str(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()))
+                        print(current_time, iteration, 'loss = %.8f, mse = %.8f' % (current_loss, mses[-1]))
+                        history.append([tp(dummy_data[imidx].cpu()) for imidx in range(rArgs.num_dummy)])
+                        history_iters.append(iteration)
 
-                    for imidx in range(rArgs.num_dummy):
-                        plt.figure(figsize=(12, 8))
-                        plt.subplot(3, 10, 1)
-                        plt.imshow(tp(gt_data[imidx].cpu()))
-                        for i in range(min(len(history), 29)):
-                            plt.subplot(3, 10, i + 2)
-                            plt.imshow(history[i][imidx])
-                            plt.title('iter=%d' % (history_iters[i]))
-                            plt.axis('off')
-                        if method == 'DLG':
-                            plt.savefig('%s/DLG_on_%s_%05d.png' % (rArgs.resultPath, imidx_list, imidx_list[imidx]))
-                            plt.close()
-                        elif method == 'iDLG':
-                            plt.savefig('%s/iDLG_on_%s_%05d.png' % (rArgs.resultPath, imidx_list, imidx_list[imidx]))
-                            plt.close()
+                        for imidx in range(rArgs.num_dummy):
+                            plt.figure(figsize=(12, 8))
+                            plt.subplot(3, 10, 1)
+                            plt.imshow(tp(gt_data[imidx].cpu()))
+                            for i in range(min(len(history), 29)):
+                                plt.subplot(3, 10, i + 2)
+                                plt.imshow(history[i][imidx])
+                                plt.title('iter=%d' % (history_iters[i]))
+                                plt.axis('off')
+                            if method == 'DLG':
+                                plt.savefig('%s/DLG_on_%s_%05d.png' % (rArgs.resultPath, imidx_list, imidx_list[imidx]))
+                                plt.close()
+                            elif method == 'iDLG':
+                                plt.savefig('%s/iDLG_on_%s_%05d.png' % (rArgs.resultPath, imidx_list, imidx_list[imidx]))
+                                plt.close()
 
-                    if current_loss < 0.000001:  # converge
-                        break
+                        if current_loss < 0.000001:  # converge
+                            break
 
             if method == 'DLG':
                 loss_DLG = losses
