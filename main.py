@@ -1,6 +1,8 @@
 import os
 
 from attack import main, init_process
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 
 class ModelArgs:
     def __init__(self, p, mu, alpha):
@@ -36,6 +38,13 @@ class RunArgs:
         self.num_iterations = 300
         self.num_exp = 1000
 
+def run(p_value, mu_value, alpha_value):
+    dir = os.path.join('.', f'results/nudge/{mu_value}_{alpha_value}').replace('\\', '/')
+    os.makedirs(dir, exist_ok=True)
+    mArgs = ModelArgs(p_value, mu_value, alpha_value)
+    rArgs = RunArgs(dir)
+    main(mArgs, rArgs)
+
 if __name__ == '__main__':
     p = [0.1, 0.6, 0.9]  # 1e-10
     default_mu = 5e-3
@@ -48,22 +57,19 @@ if __name__ == '__main__':
         mu.append(-mu_value)
 
     p = [1]
-    mu = [5e-3]
-    alpha = []
+    mu = [1e-5, 1e-15, 1e-30]
+    alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1.0]
 
-    mArgs = ModelArgs(p, mu)
-
-    # for gpu cge
-    # for p_value in p_values:
-    #     for mu_value in mu_values:
-    #         args = Args(p_value, mu_value)
-    #         # world_size = 1 + len(args.gpus) * args.process_per_gpu
-    #         # init_process(0, world_size, args)
-              # mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
-
-    for p_value in p:
-        for mu_value in mu:
-            for alpha_value in alpha:
-                mArgs = ModelArgs(p_value, mu_value, alpha_value)
-                rArgs = RunArgs(os.path.join('.', f'results/baseline/zo').replace('\\', '/'))
-                main(mArgs, rArgs)
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        futures = []
+        for p_value in p:
+            for mu_value in mu:
+                for alpha_value in alpha:
+                    futures.append(executor.submit(run, p_value, mu_value, alpha_value))
+        
+        for future in futures:
+            future.result()
+                # for gpu
+                # world_size = 1 + len(args.gpus) * args.process_per_gpu
+                # init_process(0, world_size, args)
+                # mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
