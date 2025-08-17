@@ -1,6 +1,9 @@
 
 import time
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 import torch.nn as nn
 from torchvision import transforms
 import os
@@ -58,12 +61,13 @@ def main(mArgs, rArgs):
     shape_img, num_classes, channel, hidden, dst = dataset_loader(dataset, data_path)
 
     idx_shuffle = np.random.default_rng(123).permutation(len(dst))
+
+    net = init_model(device, mArgs, num_classes, hidden, channel)
+    net = net.to(device)
+    criterion = nn.CrossEntropyLoss().to(device)
+
     ''' train DLG and iDLG '''
     for idx_net in range(0, rArgs.num_exp):
-        net = init_model(device, mArgs, num_classes, hidden, channel)
-        net = net.to(device)
-        criterion = nn.CrossEntropyLoss().to(device)
-
         if not rArgs.single:
             idx_shuffle = np.random.default_rng(123).permutation(len(dst))
 
@@ -117,8 +121,8 @@ def main(mArgs, rArgs):
             elif method == 'iDLG':
                 optimizer = torch.optim.LBFGS([dummy_data, ], lr=lr)
                 # predict the ground-truth label
-                # label_pred = gt_label
-                label_pred = torch.argmin(torch.sum(zo_dy_dx[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False)
+                label_pred = gt_label
+                # label_pred = torch.argmin(torch.sum(zo_dy_dx[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False)
 
             history = []
             history_iters = []
@@ -132,8 +136,8 @@ def main(mArgs, rArgs):
             for iteration in range(rArgs.num_iterations):
                 closure = closures.BaseClosure(optimizer, net, criterion, method, dummy_data, dummy_label, label_pred, zo_dy_dx_nudge)
 
-                optimizer.step(closure)
-                current_loss = closure().item()
+                loss = optimizer.step(closure)
+                current_loss = loss.item()
                 train_iters.append(iteration)
                 losses.append(current_loss)
                 mses.append(torch.mean((dummy_data - gt_data) ** 2).item())
