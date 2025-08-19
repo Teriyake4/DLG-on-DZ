@@ -26,13 +26,22 @@ def main(args):
     save_path = os.path.join(results_path, exp, gen_folder_name(args, ignore=['log', 'gpus', 'process_per_gpu', 'master_addr', 'master_port', 'momentum', 'weight_decay', 'sparsity_folder', 'sparsity_ckpt']))
 
     # Data
-    loaders, class_num = prepare_dataset(args.dataset, args.batch_size)
+    # loaders, class_num = prepare_dataset(args.dataset, args.batch_size)
+    from data import alt_dataset
+    loaders, class_num = alt_dataset(args.dataset, args.batch_size)
 
     # Network
     if args.network == "resnet20":
         from models.resnet_s import resnet20, param_name_to_module_id_rn20
         param_name_to_module_id = param_name_to_module_id_rn20
         network_init_func = resnet20
+        network_kwargs = {
+            'num_classes': class_num
+        }
+    elif args.network == "lenet":
+        from models.lenet import lenet, param_name_to_module_id_lenet
+        param_name_to_module_id = param_name_to_module_id_lenet
+        network_init_func = lenet
         network_kwargs = {
             'num_classes': class_num
         }
