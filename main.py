@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 torch.set_num_threads(2)
 
@@ -61,6 +62,7 @@ if __name__ == '__main__':
     p = [1]
     mu = [1e-17, 1e-19, 1e-21, 1e-23] # [1e-5, 1e-15, 1e-30]
     alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
+    mu = np.linspace(1e-15, 1e-17, 12)[1:-1]
 
     with ProcessPoolExecutor(max_workers=4) as executor:
         futures = []
