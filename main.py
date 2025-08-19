@@ -1,6 +1,7 @@
 import os
 import torch
 torch.set_num_threads(2)
+torch.set_default_dtype(torch.float64)
 
 from attack import main, init_process
 from concurrent.futures import ProcessPoolExecutor
@@ -41,7 +42,7 @@ class RunArgs:
         self.num_exp = 100
 
 def run(p_value, mu_value, alpha_value):
-    dir = os.path.join('.', f'results/nudge_intermediate/{mu_value}_{alpha_value}').replace('\\', '/')
+    dir = os.path.join('.', f'results/nudge_intermediate2/{mu_value}_{alpha_value}').replace('\\', '/')
     os.makedirs(dir, exist_ok=True)
     mArgs = ModelArgs(p_value, mu_value, alpha_value)
     rArgs = RunArgs(dir)
@@ -59,7 +60,7 @@ if __name__ == '__main__':
         mu.append(-mu_value)
 
     p = [1]
-    mu = [1e-17, 1e-19, 1e-21, 1e-23] # [1e-5, 1e-15, 1e-30]
+    mu = [1e-6, 1e-7, 1e-8, 1e-9] # [1e-5, 1e-15, 1e-30]
     alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
 
     with ProcessPoolExecutor(max_workers=4) as executor:
