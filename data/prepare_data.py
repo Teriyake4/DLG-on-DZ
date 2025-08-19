@@ -42,3 +42,29 @@ def prepare_dataset(dataset, batch_size=128, pin_memory=False):
         'train': train_loader,
         'test': test_loader,
     }, cls_num
+
+def alt_dataset(batch_size=129, pin_memory=False):
+    """
+    Uses the first 100 images of a prespecified seed as the test data and the rest as training
+    """
+    import numpy as np
+    from cfg import data_path
+    from torch.utils.data import Subset
+    data_path = os.path.join(data_path, "mnist")
+    mean = [0.4914, 0.4822, 0.4465]
+    std = [0.2471, 0.2435, 0.2616]
+    train_transform = transforms.Compose([
+        transforms.ToTensor(),
+    ])
+    full_dataset = datasets.MNIST(root = data_path, download=True, transform = train_transform)
+    idx_shuffle = np.random.default_rng(123).permutation(len(full_dataset))
+    test_idx = idx_shuffle[:100]
+    train_idx = idx_shuffle[100:]
+    train_data = Subset(full_dataset, train_idx)
+    test_data = Subset(full_dataset, test_idx)
+    train_loader = DataLoader(train_data, batch_size, shuffle = True, num_workers=0)
+    test_loader = DataLoader(test_data, batch_size, shuffle = False, num_workers=0)
+    return {
+        'train': train_loader,
+        'test': test_loader,
+    }, 10
