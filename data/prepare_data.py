@@ -43,7 +43,7 @@ def prepare_dataset(dataset, batch_size=128, pin_memory=False):
         'test': test_loader,
     }, cls_num
 
-def alt_dataset(batch_size=129, pin_memory=False):
+def alt_dataset(dataset, batch_size=128, pin_memory=False):
     """
     Uses the first 100 images of a prespecified seed as the test data and the rest as training
     """

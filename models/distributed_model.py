@@ -21,22 +21,20 @@ class DistributedCGEModel(object):
         self.loss_function = loss_function
         self.network.requires_grad_(False)
 
-    # @torch.no_grad()
+    @torch.no_grad()
     def calculate_grads(self, x_rref, y_rref, cge_step_size):
         assert hasattr(self, 'instruction')
-        self.device = torch.device("cpu")
         x, y = x_rref.to_here().to(self.device), y_rref.to_here().to(self.device)
-        # x, y = x_rref.to_here().to("cpu"), y_rref.to_here().to("cpu")
         fxs = [x]
-        # with torch.no_grad():
-        fxs += self.network(x, return_interval = self.feature_reuse) if self.feature_reuse else [self.network(x, return_interval = self.feature_reuse)]
-        base = self.loss_function(fxs[-1], y)
+        with torch.no_grad():
+            fxs += self.network(x, return_interval = self.feature_reuse) if self.feature_reuse else [self.network(x, return_interval = self.feature_reuse)]
+            base = self.loss_function(fxs[-1], y)
         grads = torch.zeros(self.instruction.size(0), device=self.device)
         for i, (name_id, idx) in enumerate(self.instruction):
             self.perturb_a_param(self.param_names[name_id], idx, cge_step_size)
             starting_id = self.param_name_to_module_id(self.param_names[name_id]) if self.feature_reuse else 0
-            # with torch.no_grad():
-            fx = self.network(fxs[starting_id], starting_id=starting_id)
+            with torch.no_grad():
+                fx = self.network(fxs[starting_id], starting_id=starting_id)
             self.perturb_a_param(self.param_names[name_id], idx, cge_step_size, reset=True)
             grads[i] = self.loss_function(fx, y)
         grads = (grads - base) / cge_step_size

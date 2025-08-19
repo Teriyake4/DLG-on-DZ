@@ -23,7 +23,12 @@ def main(args):
     device = f"cuda:{args.gpus[-1]}"
     set_seed(args.seed)
     exp = os.path.basename(__file__.split('.')[0])
-    save_path = os.path.join(results_path, exp, gen_folder_name(args, ignore=['log', 'gpus', 'process_per_gpu', 'master_addr', 'master_port', 'momentum', 'weight_decay', 'sparsity_folder', 'sparsity_ckpt']))
+    # save_path = os.path.join(results_path, exp, gen_folder_name(args, ignore=['log', 'gpus', 'process_per_gpu', 'master_addr', 'master_port', 'momentum', 'weight_decay', 'sparsity_folder', 'sparsity_ckpt']))
+    save_path = os.path.join(".", "training/")
+    print(save_path)
+
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
 
     # Data
     # loaders, class_num = prepare_dataset(args.dataset, args.batch_size)

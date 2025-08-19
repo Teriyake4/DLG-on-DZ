@@ -6,8 +6,8 @@ import random
 def process_cli(parser):
     parser.add_argument('--dry-run', action='store_false', dest='log')
     parser.add_argument('--seed', type=int, default=324823217)
-    parser.add_argument('--network', choices=['resnet20', 'cnn'], default='resnet20')
-    parser.add_argument('--dataset', choices=['cifar10'], default='cifar10')
+    parser.add_argument('--network', choices=['resnet20', 'cnn', 'lenet'], default='resnet20')
+    parser.add_argument('--dataset', choices=['cifar10', 'MNIST'], default='cifar10')
     parser.add_argument('--batch-size', type=int, default=256)
 
     parser.add_argument('--zoo-step-size', type=float, default=5e-3)
