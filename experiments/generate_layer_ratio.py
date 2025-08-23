@@ -4,8 +4,7 @@ import argparse
 import torch
 sys.path.append(".")
 from algorithm.prune import global_prune, layer_sparsity
-from data import prepare_dataset
-
+from data import prepare_dataset, alt_dataset
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument('--network', type=str, choices=['resnet20', 'lenet'])
@@ -14,9 +13,9 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     # loaders, class_num = prepare_dataset("cifar10")
-    loaders, class_num = prepare_dataset("mnist")
+    loaders, class_num = alt_dataset("mnist")
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
     if args.network == "resnet20":
         from models.resnet_s import resnet20, param_name_to_module_id_rn20
         param_name_to_module_id = param_name_to_module_id_rn20
