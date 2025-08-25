@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 torch.set_num_threads(2)
-torch.set_default_dtype(torch.float64)
+torch.set_default_dtype(torch.float32)
 
 from attack import main, init_process
 from concurrent.futures import ProcessPoolExecutor
@@ -43,33 +43,25 @@ class RunArgs:
         self.num_exp = 100
 
 def run(p_value, mu_value, alpha_value):
-    dir = os.path.join('.', f'results/nudge_intermediate2/{mu_value}_{alpha_value}').replace('\\', '/')
+    dir = os.path.join('.', f'results/nudge_intermediate_new/{mu_value}_{alpha_value}').replace('\\', '/')
     os.makedirs(dir, exist_ok=True)
     mArgs = ModelArgs(p_value, mu_value, alpha_value)
     rArgs = RunArgs(dir)
     main(mArgs, rArgs)
 
 if __name__ == '__main__':
-    p = [0.1, 0.6, 0.9]  # 1e-10
-    default_mu = 5e-3
-    delta_mu_values = [10, 5, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
-    num_mus = len(delta_mu_values)
-    mu = []
-    for i in range(num_mus):
-        mu_value = default_mu + delta_mu_values[i]
-        mu.append(mu_value)
-        mu.append(-mu_value)
-
     p = [1]
-    mu = [1e-6, 1e-7, 1e-8, 1e-9] # [1e-5, 1e-15, 1e-30]
     alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
-    mu = np.linspace(1e-15, 1e-17, 12)[1:-1]
+    mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
+    mu.extend(np.linspace(1e-15, 1e-17, 6)[1:-1].tolist())
+    mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
 
-    with ProcessPoolExecutor(max_workers=4) as executor:
+    with ProcessPoolExecutor(max_workers=6) as executor:
         futures = []
         for p_value in p:
             for mu_value in mu:
                 for alpha_value in alpha:
+                    # if os.path.isd
                     futures.append(executor.submit(run, p_value, mu_value, alpha_value))
         
         for future in futures:

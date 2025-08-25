@@ -85,7 +85,7 @@ def main(mArgs, rArgs):
                 else:
                     idx = idx_shuffle[imidx]
                 imidx_list.append(idx)
-                tmp_datum = tt(dst[idx][0]).double().to(device)
+                tmp_datum = tt(dst[idx][0]).float().to(device)
                 tmp_datum = tmp_datum.view(1, *tmp_datum.size())
                 tmp_label = torch.Tensor([dst[idx][1]]).long().to(device)
                 tmp_label = tmp_label.view(1, )
