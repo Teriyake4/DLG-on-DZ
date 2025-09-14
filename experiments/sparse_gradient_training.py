@@ -1,14 +1,16 @@
 import os
+import time
 from tqdm import tqdm
 import argparse
 import torch
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 from functools import partial
-from  torch.distributed import rpc
+from torch.distributed import rpc
 import torch.multiprocessing as mp
 
 import sys
+
 sys.path.append(".")
 from cfg import results_path
 from tools import *
@@ -18,13 +20,42 @@ from data import prepare_dataset
 from models.tools import time_consumption_per_layer
 from models.distributed_model import DistributedCGEModel
 
+
+class Args():
+    def __init__(self, batch_size: int, sparsity: float, sparsity_ckpt: str):
+        self.dry_run = False
+        self.seed = 123
+        self.network = "lenet"
+        self.dataset = "MNIST"
+        self.batch_size = batch_size
+        self.zoo_step_size = 1e-7
+        self.epoch = 50
+        self.lr = 0.1
+        self.weight_decay = 5e-4
+        self.momentum = 0.9
+        self.warmup_epochs = 3
+        self.nesterov = True
+        self.scheduler = "cosine"
+        self.mask_shuffle_interval = 5
+        self.score = "layer_wise_random"
+        self.sparsity = sparsity
+        self.sparsity_folder = "Layer_Sparsity"
+        self.sparsity_ckpt = sparsity_ckpt
+        self.gpus = [2]
+        self.process_per_gpu = 2
+        self.master_addr = "localhost"
+        self.master_port = "29500"
+        self.log = True
+
+
 def main(args):
+    start_time = time.time()
     # Misc
     device = f"cuda:{args.gpus[-1]}"
     set_seed(args.seed)
     exp = os.path.basename(__file__.split('.')[0])
     # save_path = os.path.join(results_path, exp, gen_folder_name(args, ignore=['log', 'gpus', 'process_per_gpu', 'master_addr', 'master_port', 'momentum', 'weight_decay', 'sparsity_folder', 'sparsity_ckpt']))
-    save_path = os.path.join(".", "training/")
+    save_path = os.path.join(".", f"training/training_{args.batch_size}_{args.sparsity}/")
     print(save_path)
 
     if not os.path.exists(save_path):
@@ -183,7 +214,15 @@ def main(args):
                 state_dict['best_acc'] = best_acc
                 torch.save(state_dict, os.path.join(save_path, 'best.pth'))
             torch.save(state_dict, os.path.join(save_path, 'ckpt.pth'))
-        
+
+        # Cutoff
+        if acc.avg == 0.9:
+            print("Accuracy cutoff")
+            return
+        if epoch == 10:
+            print("Epoch cutoff")
+            return
+
 
 def init_process(rank, world_size, args):
     os.environ['MASTER_ADDR'] = args.master_addr
@@ -200,16 +239,26 @@ def init_process(rank, world_size, args):
         i = (rank-1) % args.process_per_gpu
         rpc.init_rpc(
                 f"{gpu}-{i}", rank=rank, world_size=world_size,
-                rpc_backend_options=rpc.TensorPipeRpcBackendOptions(num_worker_threads=args.process_per_gpu*world_size+1, rpc_timeout=0.)        
+                rpc_backend_options=rpc.TensorPipeRpcBackendOptions(num_worker_threads=args.process_per_gpu*world_size+1, rpc_timeout=0.)
             )
     rpc.shutdown()
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p = process_cli(p)
-    args = p.parse_args()
+    # p = argparse.ArgumentParser()
+    # p = process_cli(p)
+    # args = p.parse_args()
 
-    args.gpus = args.gpus.split(',')
-    world_size = 1 + len(args.gpus) * args.process_per_gpu
-    mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
+    # args.gpus = args.gpus.split(',')
+
+    # check number 1
+    # p = 1 batch_size = 128
+
+    # check number 2
+    # alpha = 1 p = 0
+    for batch_size in (32, 64, 128):
+        for p in (0, 0.5, 0.9):
+            args = Args(batch_size, p, f"zo_grasp_{p}")
+
+            world_size = 1 + len(args.gpus) * args.process_per_gpu
+            mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
