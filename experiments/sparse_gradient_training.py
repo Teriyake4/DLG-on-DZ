@@ -2,6 +2,7 @@ import os
 import time
 from tqdm import tqdm
 import argparse
+import numpy as np
 import torch
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
@@ -22,7 +23,7 @@ from models.distributed_model import DistributedCGEModel
 
 
 class Args():
-    def __init__(self, batch_size: int, sparsity: float, sparsity_ckpt: str):
+    def __init__(self, batch_size: int, lr: float, alpha: float, sparsity: float, sparsity_ckpt: str):
         self.dry_run = False
         self.seed = 123
         self.network = "lenet"
@@ -30,7 +31,8 @@ class Args():
         self.batch_size = batch_size
         self.zoo_step_size = 1e-7
         self.epoch = 50
-        self.lr = 0.1
+        self.lr = lr
+        self.alpha = alpha
         self.weight_decay = 5e-4
         self.momentum = 0.9
         self.warmup_epochs = 3
@@ -41,7 +43,7 @@ class Args():
         self.sparsity = sparsity
         self.sparsity_folder = "Layer_Sparsity"
         self.sparsity_ckpt = sparsity_ckpt
-        self.gpus = [2]
+        self.gpus = [1, 2]
         self.process_per_gpu = 2
         self.master_addr = "localhost"
         self.master_port = "29500"
@@ -55,11 +57,14 @@ def main(args):
     set_seed(args.seed)
     exp = os.path.basename(__file__.split('.')[0])
     # save_path = os.path.join(results_path, exp, gen_folder_name(args, ignore=['log', 'gpus', 'process_per_gpu', 'master_addr', 'master_port', 'momentum', 'weight_decay', 'sparsity_folder', 'sparsity_ckpt']))
-    save_path = os.path.join(".", f"training/training_{args.batch_size}_{args.sparsity}/")
+    save_path = os.path.join(".", f"training/experiment3/training_batchSize_{args.batch_size}_lr_{args.lr}_alpha_{args.alpha}_p_{args.sparsity}/")
     print(save_path)
 
     if not os.path.exists(save_path):
         os.makedirs(save_path)
+
+    # Criterion for calculating vanilla gradients
+    criterion = torch.nn.CrossEntropyLoss().to(device)
 
     # Data
     # loaders, class_num = prepare_dataset(args.dataset, args.batch_size)
@@ -150,9 +155,9 @@ def main(args):
                 global_prune(network, args.sparsity, args.score, class_num, loaders['train'], zoo_sample_size=192, zoo_step_size=5e-3, layer_wise_sparsity=sparsity_ckpt)
             elif args.sparsity == 0:
                 pass
-            else:
-                raise ValueError('sparsity not valid')
-            assert abs(args.sparsity - (1 - check_sparsity(network, if_print=False) / 100)) < 0.01, check_sparsity(network, if_print=False)
+            # else:
+            #     raise ValueError('sparsity not valid')
+            # assert abs(args.sparsity - (1 - check_sparsity(network, if_print=False) / 100)) < 0.01, check_sparsity(network, if_print=False)
             current_mask = extract_mask(network.state_dict())
             cge_weight_allocate_to_process(remote_networks, network, args.gpus, args.process_per_gpu, param_name_to_module_id, time_consumption_per_layer(args.network))
             remove_prune(network)
@@ -173,6 +178,21 @@ def main(args):
                 loss_batch = F.cross_entropy(fx, y_cuda).cpu()
             lr = optimizer.param_groups[0]['lr']
             cge_calculation(remote_networks, network, args.gpus, args.process_per_gpu, x, y, lr if args.zoo_step_size == -1 else args.zoo_step_size)
+
+            zo_dy_dx = [p.grad for p in network.parameters()]
+
+            # Compute original gradients
+            out = network(x_cuda)
+            model_y = criterion(out, y_cuda)
+            vanilla_dy_dx = torch.autograd.grad(model_y, network.parameters())
+
+            # Calculate nudge gradients
+            zo_dy_dx_nudge = [zo_dy_dx[i] + (vanilla_dy_dx[i] - zo_dy_dx[i]) * args.alpha for i in range(len(zo_dy_dx))]
+            zo_dy_dx_nudge = [grad.detach().clone() for grad in zo_dy_dx_nudge]
+
+            for p, nudge in zip(network.parameters(), zo_dy_dx_nudge):
+                p.grad.copy_(nudge)
+
             optimizer.step()
             network_synchronize(remote_networks, network, args.gpus, args.process_per_gpu)
             acc.update(torch.argmax(fx, 1).eq(y_cuda).float().mean().item(), y.size(0))
@@ -251,14 +271,17 @@ if __name__ == "__main__":
 
     # args.gpus = args.gpus.split(',')
 
-    # check number 1
-    # p = 1 batch_size = 128
+    # alpha = 0.9 - 1.0 increasing by intervals of 0.01
+    # p = 0, alpha = 0, mu = 1e-7
+    # try lr = 0.1, 0.01
 
-    # check number 2
-    # alpha = 1 p = 0
-    for batch_size in (32, 64, 128):
-        for p in (0, 0.5, 0.9):
-            args = Args(batch_size, p, f"zo_grasp_{p}")
+    # 0.5-0.9 alpha
 
-            world_size = 1 + len(args.gpus) * args.process_per_gpu
-            mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
+    for lr in [0.1, 0.01]:
+        for batch_size in [128, 256, 512]:
+            for alpha in np.arange(0.5, 1, 0.1).tolist():
+                for p in [0]:
+                    args = Args(batch_size, lr, alpha, p, f"zo_grasp_{p:.1f}")
+
+                world_size = 1 + len(args.gpus) * args.process_per_gpu
+                mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
