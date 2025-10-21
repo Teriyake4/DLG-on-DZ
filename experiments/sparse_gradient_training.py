@@ -23,13 +23,13 @@ from models.distributed_model import DistributedCGEModel
 
 
 class Args():
-    def __init__(self, batch_size: int, lr: float, alpha: float, sparsity: float, sparsity_ckpt: str):
+    def __init__(self, batch_size: int, lr: float, alpha: float, sparsity: float, mu: float, sparsity_ckpt: str):
         self.dry_run = False
         self.seed = 123
         self.network = "lenet"
         self.dataset = "MNIST"
         self.batch_size = batch_size
-        self.zoo_step_size = 1e-7
+        self.zoo_step_size = mu # 1e-7
         self.epoch = 50
         self.lr = lr
         self.alpha = alpha
@@ -43,7 +43,7 @@ class Args():
         self.sparsity = sparsity
         self.sparsity_folder = "Layer_Sparsity"
         self.sparsity_ckpt = sparsity_ckpt
-        self.gpus = [1, 2]
+        self.gpus = [1, 4, 5]
         self.process_per_gpu = 2
         self.master_addr = "localhost"
         self.master_port = "29500"
@@ -57,7 +57,7 @@ def main(args):
     set_seed(args.seed)
     exp = os.path.basename(__file__.split('.')[0])
     # save_path = os.path.join(results_path, exp, gen_folder_name(args, ignore=['log', 'gpus', 'process_per_gpu', 'master_addr', 'master_port', 'momentum', 'weight_decay', 'sparsity_folder', 'sparsity_ckpt']))
-    save_path = os.path.join(".", f"training/experiment3/training_batchSize_{args.batch_size}_lr_{args.lr}_alpha_{args.alpha}_p_{args.sparsity}/")
+    save_path = os.path.join(".", f"training/experiment5/training_batchSize_{args.batch_size}_lr_{args.lr}_alpha_{args.alpha}_p_{args.sparsity}/")
     print(save_path)
 
     if not os.path.exists(save_path):
@@ -271,17 +271,17 @@ if __name__ == "__main__":
 
     # args.gpus = args.gpus.split(',')
 
-    # alpha = 0.9 - 1.0 increasing by intervals of 0.01
-    # p = 0, alpha = 0, mu = 1e-7
-    # try lr = 0.1, 0.01
+    # alpha 0.5 - 0.9 intervals of 0.1
+    # alpha 0.9, 0.95, 0.99, 0.999, 1
+    # batch size 128, 256, 512
+    # revert scheduler changes
 
-    # 0.5-0.9 alpha
-
-    for lr in [0.1, 0.01]:
+    for lr in [0.1]:
         for batch_size in [128, 256, 512]:
-            for alpha in np.arange(0.5, 1, 0.1).tolist():
-                for p in [0]:
-                    args = Args(batch_size, lr, alpha, p, f"zo_grasp_{p:.1f}")
+            for alpha in np.arange(0.5, 0.9, 0.1).tolist() + [0.9, 0.95, 0.99, 0.999, 1]:
+                for mu in [9.23e-10, 6.92e-10, 3.85e-10, 1.54e-10, 1e-5, 1e-7, 1e-9, 1e-15, 1e-17, 1e-30]:
+                    for p in [0]:
+                        args = Args(batch_size, lr, alpha, p, mu, f"zo_grasp_{p:.1f}")
 
                 world_size = 1 + len(args.gpus) * args.process_per_gpu
                 mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
