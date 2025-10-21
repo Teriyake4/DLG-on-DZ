@@ -43,7 +43,7 @@ class RunArgs:
         self.num_exp = 100
 
 def run(p_value, mu_value, alpha_value):
-    dir = os.path.join('.', f'results/nudge_intermediate_new/{mu_value}_{alpha_value}').replace('\\', '/')
+    dir = os.path.join('.', f'results/nudge_intermediate_cifar10/{mu_value}_{alpha_value}').replace('\\', '/')
     os.makedirs(dir, exist_ok=True)
     mArgs = ModelArgs(p_value, mu_value, alpha_value)
     rArgs = RunArgs(dir)

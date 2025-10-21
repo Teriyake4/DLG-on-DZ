@@ -31,7 +31,7 @@ from init_util import dataset_loader, init_model
 
 
 def main(mArgs, rArgs):
-    dataset = 'MNIST'
+    dataset = 'cifar10'
     root_path = '.'
     print(os.path.join(root_path, '../data').replace('\\', '/'))
     data_path = os.path.join(root_path, '../data').replace('\\', '/')
