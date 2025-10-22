@@ -2,27 +2,22 @@ import torch.nn as nn
 import torch
 
 class LeNet(nn.Module):
-    def __init__(self, channel=3, num_classes=10, input_size=(1, 28, 28)):
+    def __init__(self, channel=3, hidden=588, num_classes=10, input_size=(1, 28, 28)):
         super(LeNet, self).__init__()
         act = nn.Sigmoid
         self.body = nn.Sequential(
             nn.Conv2d(channel, 12, kernel_size=5, padding=5 // 2, stride=2),
-            act(),                                                             # 1
-
-            nn.Conv2d(12, 12, kernel_size=5, padding=5 // 2, stride=2),       # 2
-
-            act(),                                                             # 3
-
-            nn.Conv2d(12, 12, kernel_size=5, padding=5 // 2, stride=1),       # 4
-
-            act(),                                                             # 5
+            act(),
+            nn.Conv2d(12, 12, kernel_size=5, padding=5 // 2, stride=2),
+            act(),
+            nn.Conv2d(12, 12, kernel_size=5, padding=5 // 2, stride=1),
+            act(),
         )
         # Dynamically calculate the hidden size
         # with torch.no_grad():
         #     dummy_input = torch.zeros(1, *input_size)  # e.g., [1, 3, 32, 32]
         #     dummy_output = self.body(dummy_input)
         #     hidden = dummy_output.numel()
-        hidden = 588
         self.fc = nn.Sequential(
             nn.Linear(hidden, num_classes)
         )
@@ -48,7 +43,7 @@ class LeNet(nn.Module):
 
 
 def lenet(channel=1, hidden=768, num_classes=10):
-    return LeNet(channel=1, num_classes=num_classes)
+    return LeNet(channel=channel, hidden=hidden, num_classes=num_classes)
 
 def param_name_to_module_id_lenet(name = 'depth'):
     if name.startswith('body.0'):
