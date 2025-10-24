@@ -27,7 +27,7 @@ class Args():
         self.dry_run = False
         self.seed = 123
         self.network = "lenet"
-        self.dataset = "MNIST"
+        self.dataset = "mnist"
         self.batch_size = batch_size
         self.zoo_step_size = mu # 1e-7
         self.epoch = 50
@@ -62,6 +62,8 @@ def main(args):
 
     if not os.path.exists(save_path):
         os.makedirs(save_path)
+    else:
+        return
 
     # Criterion for calculating vanilla gradients
     criterion = torch.nn.CrossEntropyLoss().to(device)
@@ -283,5 +285,5 @@ if __name__ == "__main__":
                     for p in [0]:
                         args = Args(batch_size, lr, alpha, p, mu, f"zo_grasp_{p:.1f}")
 
-                world_size = 1 + len(args.gpus) * args.process_per_gpu
-                mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
+                        world_size = 1 + len(args.gpus) * args.process_per_gpu
+                        mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
