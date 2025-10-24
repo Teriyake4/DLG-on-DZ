@@ -50,13 +50,22 @@ def alt_dataset(dataset, batch_size=128, pin_memory=False):
     import numpy as np
     from cfg import data_path
     from torch.utils.data import Subset
-    data_path = os.path.join(data_path, "mnist")
+    data_path = os.path.join(data_path, dataset)
     mean = [0.4914, 0.4822, 0.4465]
     std = [0.2471, 0.2435, 0.2616]
     train_transform = transforms.Compose([
         transforms.ToTensor(),
     ])
-    full_dataset = datasets.MNIST(root = data_path, download=True, transform = train_transform)
+    full_dataset = None
+    if dataset == "cifar10":
+        full_dataset = datasets.CIFAR10(root = data_path, download = True, transform = train_transform)
+    if dataset == "mnist":
+        full_dataset = datasets.MNIST(root = data_path, download=True, transform = train_transform)
+    else:
+        raise NotImplementedError
+    return {
+        'train': full_dataset,
+    }
     idx_shuffle = np.random.default_rng(123).permutation(len(full_dataset))
     test_idx = idx_shuffle[:100]
     train_idx = idx_shuffle[100:]
