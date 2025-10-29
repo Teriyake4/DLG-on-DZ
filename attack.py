@@ -116,57 +116,15 @@ def main(mArgs, rArgs):
             # dummy_label = gt_label.to(device)
             dummy_label = torch.randn((gt_data.shape[0], num_classes)).to(device).requires_grad_(True)
 
-            if method == 'DLG':
-                optimizer = torch.optim.LBFGS([dummy_data, dummy_label], lr=lr)
-            elif method == 'iDLG':
-                optimizer = torch.optim.LBFGS([dummy_data, ], lr=lr)
-                # predict the ground-truth label
-                label_pred = gt_label
-                # label_pred = torch.argmin(torch.sum(zo_dy_dx[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False)
 
-            history = []
-            history_iters = []
-            losses = []
-            mses = []
-            train_iters = []
-            
-            print('lr =', lr)
+                # label_pred = torch.argmin(torch.sum(zo_dy_dx[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False)
             zo_dy_dx_nudge = [zo_dy_dx[i] + (vanilla_dy_dx[i] - zo_dy_dx[i]) * mArgs.alpha for i in range(len(zo_dy_dx))]
             zo_dy_dx_nudge = [grad.detach().clone() for grad in zo_dy_dx_nudge]
-            for iteration in range(rArgs.num_iterations):
-                closure = closures.BaseClosure(optimizer, net, criterion, method, dummy_data, dummy_label, label_pred, zo_dy_dx_nudge)
-
-                loss = optimizer.step(closure)
-                current_loss = loss.item()
-                train_iters.append(iteration)
-                losses.append(current_loss)
-                mses.append(torch.mean((dummy_data - gt_data) ** 2).item())
-
-                if iteration % rArgs.printFreq == 0:
-                    current_time = str(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()))
-                    print(current_time, iteration, 'loss = %.8f, mse = %.8f' % (current_loss, mses[-1]))
-                    history.append([tp(dummy_data[imidx].cpu()) for imidx in range(rArgs.num_dummy)])
-                    history_iters.append(iteration)
-
-                    for imidx in range(rArgs.num_dummy):
-                        plt.figure(figsize=(12, 8))
-                        plt.subplot(3, 10, 1)
-                        plt.imshow(tp(gt_data[imidx].cpu()))
-                        for i in range(min(len(history), 29)):
-                            plt.subplot(3, 10, i + 2)
-                            plt.imshow(history[i][imidx])
-                            plt.title('iter=%d' % (history_iters[i]))
-                            plt.axis('off')
-                        if method == 'DLG':
-                            plt.savefig('%s/DLG_on_%s_%05d.png' % (rArgs.resultPath, imidx_list, imidx_list[imidx]))
-                            plt.close()
-                        elif method == 'iDLG':
-                            plt.savefig('%s/iDLG_on_%s_%05d.png' % (rArgs.resultPath, imidx_list, imidx_list[imidx]))
-                            plt.close()
-
-                    if current_loss < 0.000001:  # converge
-                        break
-
+            losses, mses, = inv_attack(zo_dy_dx_nudge, optimizer, net, criterion, method, 
+                                       gt_data, dummy_data, dummy_label, label_pred,
+                                       rArgs.num_iterations, rArgs.printFreq, rArgs.num_dummy, 
+                                       rArgs.resultPath, imidx_list, tp)
+            
             if method == 'DLG':
                 loss_DLG = losses
                 label_DLG = torch.argmax(dummy_label, dim=-1).detach().item()
@@ -212,3 +170,5 @@ def init_process(rank, world_size, mArgs, rArgs):
                 num_worker_threads=mArgs.process_per_gpu * world_size + 1, rpc_timeout=0.)
         )
     rpc.shutdown()
+
+
