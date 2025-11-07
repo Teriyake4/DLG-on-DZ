@@ -39,7 +39,6 @@ def main(mArgs, rArgs):
     with open(csvPath, 'w') as csv:
         csv.write("index,DLG loss,DLG MSE,iDLG loss,iDLG MSE\n")
 
-    lr = 1
     use_cuda = torch.cuda.is_available()
     device = f'cuda:{mArgs.gpus[0]}' if use_cuda else 'cpu'
     device = "cpu"
@@ -110,44 +109,37 @@ def main(mArgs, rArgs):
             
 
             zo_dy_dx = [grad.detach().clone() for grad in dy_dx]
-
-            # generate dummy data and label
-            dummy_data = torch.randn(gt_data.size()).to(device).requires_grad_(True)
-            # dummy_label = gt_label.to(device)
-            dummy_label = torch.randn((gt_data.shape[0], num_classes)).to(device).requires_grad_(True)
-
-
-                # label_pred = torch.argmin(torch.sum(zo_dy_dx[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False)
-            zo_dy_dx_nudge = [zo_dy_dx[i] + (vanilla_dy_dx[i] - zo_dy_dx[i]) * mArgs.alpha for i in range(len(zo_dy_dx))]
-            zo_dy_dx_nudge = [grad.detach().clone() for grad in zo_dy_dx_nudge]
-            losses, mses, = inv_attack(zo_dy_dx_nudge, optimizer, net, criterion, method, 
-                                       gt_data, dummy_data, dummy_label, label_pred,
-                                       rArgs.num_iterations, rArgs.printFreq, rArgs.num_dummy, 
-                                       rArgs.resultPath, imidx_list, tp)
-            
+            verbose = True
+            alpha_star = closures.optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
+                                                 rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
+                                                 rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, device, num_classes)
+            zo_dy_dx_nudge = closures.nudge_estimate(zo_dy_dx, vanilla_dy_dx, alpha_star)
+            mse, loss, reverse_engineered_x, reverse_engineered_y = closures.inv_attack(zo_dy_dx_nudge, net, criterion, method, gt_data, gt_label, 
+                                                                rArgs.printfreq, rArgs.num_dummy, rArgs.resultPath, imidx_list, 
+                                                                tp, True, device, num_classes)
             if method == 'DLG':
-                loss_DLG = losses
-                label_DLG = torch.argmax(dummy_label, dim=-1).detach().item()
-                mse_DLG = mses
+                loss_DLG = loss
+                label_DLG = torch.argmax(reverse_engineered_y, dim=-1).detach().item()
+                mse_DLG = mse
             elif method == 'iDLG':
-                loss_iDLG = losses
-                label_iDLG = label_pred.item()
-                mse_iDLG = mses
+                loss_iDLG = loss
+                label_iDLG = reverse_engineered_y.item()
+                mse_iDLG = mse
 
         print('imidx_list:', imidx_list)
         if method == 'DLG':
-            print('loss_DLG:', loss_DLG[-1], 'loss_iDLG:', loss_iDLG[-1])
-            print('mse_DLG:', mse_DLG[-1], 'mse_iDLG:', mse_iDLG[-1])
+            print('loss_DLG:', loss_DLG, 'loss_iDLG:', loss_iDLG)
+            print('mse_DLG:', mse_DLG, 'mse_iDLG:', mse_iDLG)
             print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_DLG:', label_DLG, 'lab_iDLG:', label_iDLG)
         if method == 'iDLG':
-            print('loss_iDLG:', loss_iDLG[-1])
-            print('mse_iDLG:', mse_iDLG[-1])
+            print('loss_iDLG:', loss_iDLG)
+            print('mse_iDLG:', mse_iDLG)
             print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_iDLG:', label_iDLG)
 
         print('----------------------\n\n')
         # index, loss, mse
         with open(csvPath, 'a') as csv:
-            csv.write(f"{imidx_list[0]},{loss_DLG[-1]},{mse_DLG[-1]},{loss_iDLG[-1]},{mse_iDLG[-1]}\n")
+            csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{loss_iDLG},{mse_iDLG}\n")
 
 
 def init_process(rank, world_size, mArgs, rArgs):
