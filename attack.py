@@ -3,7 +3,7 @@ import time
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
+import traceback
 import torch.nn as nn
 from torchvision import transforms
 import os
@@ -33,6 +33,19 @@ from init_util import dataset_loader, init_model
 def log(msg, log_path):
     with open(log_path, 'a') as f:
         f.write(f"{msg}\n")
+def init_csv_write(csvPath, inversion_methods):
+    inversion_methods = set(inversion_methods)
+    if inversion_methods == {'iDLG', 'DLG'}:
+        with open(csvPath, 'w') as csv:
+            csv.write("index,DLG loss,DLG MSE,DLG label correct,DLG alpha_star,DLG secs elapsed,iDLG loss,iDLG MSE,iDLG label correct,iDLG alpha_star,iDLG secs elapsed\n")
+    elif inversion_methods == {'DLG'}:
+        with open(csvPath, 'w') as csv:
+            csv.write("index,DLG loss,DLG MSE,DLG label correct,DLG alpha_star,DLG secs elapsed\n")
+    elif inversion_methods == {'iDLG'}:
+        with open(csvPath, 'w') as csv:
+            csv.write("index,iDLG loss,iDLG MSE,iDLG label correct,iDLG alpha_star,iDLG secs elapsed\n")
+    else:
+        raise ValueError('Entries in list of inversion methods are not in acceptable formats.  Please check and try again.')
 
 def main(mArgs, rArgs):
     dataset = 'MNIST'
@@ -40,10 +53,8 @@ def main(mArgs, rArgs):
     print(os.path.join(root_path, '../data').replace('\\', '/'))
     data_path = os.path.join(root_path, '../data').replace('\\', '/')
     csvPath = os.path.join(rArgs.resultPath, "results.csv")
+    init_csv_write(csvPath, rArgs.inversion_methods)
     log_path = os.path.join(rArgs.resultPath, 'log.txt')
-    with open(csvPath, 'w') as csv:
-        csv.write("index,DLG loss,DLG MSE,iDLG loss,iDLG MSE\n")
-
     use_cuda = torch.cuda.is_available()
     device = f'cuda:{mArgs.gpus[0]}' if use_cuda else 'cpu'
     device = "cpu"
@@ -64,8 +75,8 @@ def main(mArgs, rArgs):
     ''' load data '''
     shape_img, num_classes, channel, hidden, dst = dataset_loader(dataset, data_path)
 
-    idx_shuffle = list(range(len(dst))) # don't shuffle for now, to preserve experiment reproducibility and error tracking by index
-    #np.random.default_rng(123).permutation(len(dst))
+    idx_shuffle = list(range(len(dst))) # don't shuffle for now, to preserve experiment reproducibility and error tracking by index np.random.default_rng(123).permutation(len(dst))
+    #
 
     net = init_model(device, mArgs, num_classes, hidden, channel)
     net = net.to(device)
@@ -77,7 +88,8 @@ def main(mArgs, rArgs):
             idx_shuffle = np.random.default_rng(123).permutation(len(dst))
 
         print(f'Running {idx_net}|{rArgs.num_exp} experiment')
-        for method in ['iDLG', "DLG"]:
+        for method in rArgs.inversion_methods:
+            t0 = time.time()
             if rArgs.single:
                 print(f'\n{method}, Trying to generate 1 image on [{idx_shuffle[idx_net]}]')
             else:
@@ -124,19 +136,29 @@ def main(mArgs, rArgs):
                 mse, loss, x_inv, y_inv = closures.inv_attack(zo_dy_dx_nudge, net, criterion, method, gt_data, gt_label, rArgs.num_attack_iterations,
                                                                     rArgs.printFreq, rArgs.num_dummy, rArgs.resultPath, imidx_list, 
                                                                     tp, True, device, num_classes, alpha_star=alpha_star)
+                t1 = time.time()
                 if method == 'DLG':
                     loss_DLG = loss
                     label_DLG = torch.argmax(y_inv, dim=-1).detach().item()
+                    label_acc_DLG = int(label_DLG == gt_label.item())
                     mse_DLG = mse
+                    alpha_star_DLG = alpha_star
+                    secs_elapsed_DLG = round(t1-t0, 2)
                 elif method == 'iDLG':
                     loss_iDLG = loss
                     label_iDLG = y_inv.item()
+                    label_acc_iDLG = int(label_iDLG == gt_label.item())
                     mse_iDLG = mse
+                    alpha_star_iDLG = alpha_star
+                    secs_elapsed_iDLG = round(t1-t0, 2)
             except Exception as e:
                 print('Error:', e)
+                print(traceback.format_exc())
                 log(f"Error encountered in {method}, at idx_net={idx_net}:{e}", log_path)
+                log('Full traceback:', log_path)
+                log(traceback.format_exc(), log_path)
 
-
+        
         print('imidx_list:', imidx_list)
         if method == 'DLG':
             try:
@@ -154,10 +176,24 @@ def main(mArgs, rArgs):
                 continue
 
         print('----------------------\n\n')
-        # index, loss, mse
-        with open(csvPath, 'a') as csv:
-            csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{loss_iDLG},{mse_iDLG}\n")
 
+        loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG, loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG = \
+            locals().get('loss_DLG', None), locals().get('mse_DLG', None), locals().get('label_acc_DLG', None), locals().get('alpha_star_DLG', None), locals().get('secs_elapsed_DLG', None),\
+            locals().get('loss_iDLG', None), locals().get('mse_iDLG', None), locals().get('label_acc_iDLG', None), locals().get('alpha_star_iDLG', None), locals().get('secs_elapsed_iDLG', None)
+        
+        write_to_csv(csvPath, method, imidx_list, loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG,
+                     loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, rArgs.inversion_methods)
+        
+def write_to_csv(csvPath, method, imidx_list, loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG, loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, inversion_methods):
+    if set(inversion_methods) == {'iDLG', 'DLG'}:
+        with open(csvPath, 'a') as csv:
+            csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{label_acc_DLG},{alpha_star_DLG},{secs_elapsed_DLG},{loss_iDLG},{mse_iDLG},{label_acc_iDLG},{alpha_star_iDLG},{secs_elapsed_iDLG}\n")
+    elif 'DLG' in inversion_methods:
+        with open(csvPath, 'a') as csv:
+            csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{label_acc_DLG},{alpha_star_DLG},{secs_elapsed_DLG}\n")
+    else:
+        with open(csvPath, 'a') as csv:
+            csv.write(f"{imidx_list[0]},{loss_iDLG},{mse_iDLG},{label_acc_iDLG},{alpha_star_iDLG},{secs_elapsed_iDLG}\n")
 
 def init_process(rank, world_size, mArgs, rArgs):
     os.environ['MASTER_ADDR'] = mArgs.master_addr

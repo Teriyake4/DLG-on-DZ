@@ -37,13 +37,12 @@ def inv_attack(ghat, net, criterion, method, gt_data, gt_label,
                num_iterations, printfreq, num_dummy, result_path, imidx_list, tp, doplot, device, num_classes, 
                tol=0.000001, lr=1, verbose=True, alpha_star=None):
     dummy_data = torch.randn(gt_data.size()).to(device).requires_grad_(True)
-    
     if method == 'DLG':
         dummy_label = torch.randn((gt_data.shape[0], num_classes)).to(device).requires_grad_(True)
         optimizer = torch.optim.LBFGS([dummy_data, dummy_label], lr=lr)
     elif method == 'iDLG':
         optimizer = torch.optim.LBFGS([dummy_data, ], lr=lr)
-        dummy_label = gt_label
+        dummy_label = torch.argmin(torch.sum(ghat[-2], dim=-1), dim=-1).detach().reshape((1,)).requires_grad_(False) # = gt_label
     history = []
     history_iters = []
     losses = []
@@ -64,25 +63,123 @@ def inv_attack(ghat, net, criterion, method, gt_data, gt_label,
                     history.append([tp(dummy_data[imidx].cpu()) for imidx in range(num_dummy)])
                     history_iters.append(iteration)
         if current_loss < tol:  # converge
+                    if verbose:
+                        print('Attack stopped early due to loss dropping below tol.')
                     break
     if doplot:
-        for imidx in range(num_dummy):
-            plt.figure(figsize=(12, 8))
-            plt.subplot(3, 10, 1)
-            plt.imshow(tp(gt_data[imidx].cpu()))
-            for i in range(29):
-                plt.subplot(3, 10, i + 2)
-                plt.imshow(history[-28+i][imidx])
-                plt.title('iter=%d' % (history_iters[i]))
-                plt.axis('off')
-        plt.suptitle(f'Final MSE: {round(mses[-1], 5)}\n' + rf'$\alpha^\star={alpha_star}$')
-        if method == 'DLG':
-            plt.savefig('%s/DLG_on_%s_%05d.png' % (result_path, imidx_list, imidx_list[imidx]))
-            plt.close()
-        elif method == 'iDLG':
-            plt.savefig('%s/iDLG_on_%s_%05d.png' % (result_path, imidx_list, imidx_list[imidx]))
-            plt.close()
+        do_the_plot(num_dummy, num_classes, gt_data, gt_label, dummy_label, history, history_iters, mses, alpha_star, result_path, imidx_list, method, tp)
     return float(mses[-1]), float(losses[-1]), dummy_data, dummy_label
+
+def do_the_plot(num_dummy, num_classes, gt_data, gt_label, dummy_label, history, history_iters, mses, alpha_star, result_path, imidx_list, method, tp):
+    for imidx in range(num_dummy):
+        num_history = len(history)
+        total_plots = 1 + num_history  # Ground truth + history
+        
+        # Always use 3 rows, 10 columns (max 30 plots)
+        nrows = 3
+        ncols = 10
+        fig = plt.figure(figsize=(12, 8))
+        ax = plt.subplot(nrows, ncols, 1)
+        ax.imshow(tp(gt_data[imidx].cpu()))
+        ax.set_title('Ground Truth', fontsize=8)
+        ax.axis('off')
+        
+        # Plot history (up to 29 images to fit in remaining slots)
+        upp = min(num_history, 29)
+        for i in range(upp):
+            ax = plt.subplot(nrows, ncols, i + 2)
+            ax.imshow(history[-upp+i][imidx])
+            ax.set_title(f'iter={history_iters[-upp+i]}', fontsize=8)
+            ax.axis('off')
+        
+        # Remove unused subplots
+        for i in range(total_plots, nrows * ncols):
+            ax = plt.subplot(nrows, ncols, i + 1)
+            ax.remove()
+        
+        # If we have fewer than 2 rows worth of data, remove entire empty rows
+        if total_plots <= ncols:  # Only need 1 row
+            for i in range(ncols, nrows * ncols):
+                ax = plt.subplot(nrows, ncols, i + 1)
+                ax.remove()
+        elif total_plots <= 2 * ncols:  # Only need 2 rows
+            for i in range(2 * ncols, nrows * ncols):
+                ax = plt.subplot(nrows, ncols, i + 1)
+                ax.remove()
+    plt.tight_layout(rect=[0, 0, 1, 0.88])
+    plt.suptitle(f'Final MSE: {round(mses[-1], 5)}\n' + rf'$\alpha^\star={alpha_star}$')
+    # Replace line 77 in closures.py with this:
+
+    # Add probability table to the figure (embedded, not separate file)
+    if method == 'DLG':
+        probs = torch.softmax(dummy_label[0].detach(), dim=-1).cpu().numpy()
+    else:  # iDLG
+        probs = torch.zeros(num_classes)
+        probs[dummy_label.item()] = 1.0
+        probs = probs.cpu().numpy()
+    
+    gt_class = gt_label[0].item()
+    pred_class = probs.argmax()
+    
+    # Add a new subplot for the probability table at the top
+    ax_label = plt.gcf().add_axes([0.02, 0.915, 0.12, 0.04])
+    ax_label.axis('off')
+    ax_label.text(0.5, 0.5, 'Final\nreverse\nengineered\nprobabilities', 
+                    ha='center', va='center', fontsize=8, 
+                    multialignment='center')
+    
+    # Position the table
+    ax_table = plt.gcf().add_axes([0.15, 0.915, 0.7, 0.04])
+    ax_table.axis('off')
+    
+    # Create table
+    col_labels = [str(i) for i in range(num_classes)]
+    try:
+        cell_text = [[f'{probs[i]:.3f}' for i in range(num_classes)]]
+    except:
+        import pdb
+        pdb.set_trace()
+    
+    table = ax_table.table(cellText=cell_text, colLabels=col_labels,
+                            cellLoc='center', loc='center', bbox=[0, 0, 1, 1])
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1, 1.5)
+    
+    # Color cells
+    for i in range(num_classes):
+        cell = table[(1, i)]  # Data row
+        if i == pred_class and i == gt_class:
+            # Correct prediction - lime green
+            cell.set_facecolor('#00FF00')
+            cell.set_text_props(color='black', weight='bold')
+        elif i == pred_class:
+            # Wrong prediction - red with white text
+            cell.set_facecolor('#FF0000')
+            cell.set_text_props(color='white', weight='bold')
+        elif i == gt_class:
+            # Ground truth (missed) - lime green
+            cell.set_facecolor('#00FF00')
+            cell.set_text_props(color='black', weight='bold')
+        
+        # Style header
+        header_cell = table[(0, i)]
+        header_cell.set_facecolor('#E0E0E0')
+        header_cell.set_text_props(weight='bold', fontsize=8)
+    
+    # Create suptitle with more space between MSE and alpha
+    alpha_display = locals().get('alpha_star', 'N/A')
+    plt.suptitle(f'Final MSE: {round(mses[-1], 5)}\n\n\n\n' + 
+                rf'$\alpha^\star={alpha_display}$', 
+                y=0.98, fontsize=12)
+
+    if method == 'DLG':
+        plt.savefig('%s/DLG_on_%s_%05d.png' % (result_path, imidx_list, imidx_list[imidx]))
+        plt.close()
+    elif method == 'iDLG':
+        plt.savefig('%s/iDLG_on_%s_%05d.png' % (result_path, imidx_list, imidx_list[imidx]))
+        plt.close()
+
 
 def nudge_estimate(estimate, true, alpha):
     nudge = [true[i] + (estimate[i] - true[i]) * alpha for i in range(len(true))]

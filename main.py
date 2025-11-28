@@ -33,26 +33,26 @@ class ModelArgs:
         self.sample_size = 10000
 
 class RunArgs:
-    def __init__(self, resultPath):
+    def __init__(self, mu_value):
         self.single = True
-        self.printFreq = 10
-        self.resultPath = resultPath
+        self.printFreq = 20
         self.num_dummy = 1
         self.num_exp = 100
-        self.num_attack_iterations = 300
+        self.num_attack_iterations = 600
         self.num_alpha_search_evals = 50
         self.epsilon_squared = 1e-1
+        self.exper_name = f'bisect_for_alpha_112725_FULL_RUN_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
+        self.resultPath = os.path.join('.', f'results/{self.exper_name}/mu={mu_value}').replace('\\', '/')
+        self.inversion_methods = ['DLG', 'iDLG']
+        os.makedirs(self.resultPath, exist_ok=True)
 
 
-def run(p_value, mu_value, exper_name):
-    dir = os.path.join('.', f'results/{exper_name}/{mu_value}').replace('\\', '/')
-    os.makedirs(dir, exist_ok=True)
+def run(p_value, mu_value):
     mArgs = ModelArgs(p_value, mu_value)
-    rArgs = RunArgs(dir)
+    rArgs = RunArgs(mu_value)
     main(mArgs, rArgs)
 
 if __name__ == '__main__':
-    exper_name = 'bisect_for_alpha_03_111125'
     p = [1]
     # alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
     # mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     max_workers = 1
     for p_value in p:
         for mu_value in mu:
-                run(p_value, mu_value, exper_name)
+                run(p_value, mu_value)
     # with ProcessPoolExecutor(max_workers=max_workers) as executor:
     #     futures = []
     #     for p_value in p:
