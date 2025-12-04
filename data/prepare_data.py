@@ -58,14 +58,14 @@ def alt_dataset(dataset, batch_size=128, pin_memory=False):
     ])
     full_dataset = None
     if dataset == "cifar10":
-        full_dataset = datasets.CIFAR10(root = data_path, download = True, transform = train_transform)
-    if dataset == "mnist":
-        full_dataset = datasets.MNIST(root = data_path, download=True, transform = train_transform)
+        full_dataset = datasets.CIFAR10(root = data_path, download=False, transform = train_transform)
+    elif dataset == "mnist":
+        full_dataset = datasets.MNIST(root = data_path, download=False, transform = train_transform)
     else:
         raise NotImplementedError
-    return {
-        'train': full_dataset,
-    }
+    # return {
+    #     'train': full_dataset,
+    # }
     idx_shuffle = np.random.default_rng(123).permutation(len(full_dataset))
     test_idx = idx_shuffle[:100]
     train_idx = idx_shuffle[100:]
