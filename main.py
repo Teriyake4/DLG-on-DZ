@@ -1,7 +1,8 @@
 import os
 import numpy as np
+import multiprocessing
 import torch
-torch.set_num_threads(2)
+torch.set_num_threads(1)
 torch.set_default_dtype(torch.float32)
 
 from attack import main, init_process
@@ -11,6 +12,7 @@ from functools import partial
 class ModelArgs:
     def __init__(self, p, mu, alpha):
         self.sparsity_folder = "Layer_Sparsity"
+        self.dataset = "mnist"
         self.network = "lenet"  # lenet, resnet20
         self.zero = True
         self.sparsity = p  # p
@@ -36,27 +38,32 @@ class ModelArgs:
 class RunArgs:
     def __init__(self, resultPath):
         self.single = True
-        self.printFreq = 10
+        self.saveFreq = 10
+        self.printFreq = 3000
         self.resultPath = resultPath
         self.num_dummy = 1
         self.num_iterations = 300
         self.num_exp = 100
 
 def run(p_value, mu_value, alpha_value):
-    dir = os.path.join('.', f'results/nudge_intermediate_cifar10/{mu_value}_{alpha_value}').replace('\\', '/')
-    os.makedirs(dir, exist_ok=True)
     mArgs = ModelArgs(p_value, mu_value, alpha_value)
+
+    dir = os.path.join('.', f'results/nudge_intermediate_{mArgs.dataset}/{mu_value}_{alpha_value}').replace('\\', '/')
+    os.makedirs(dir, exist_ok=True)
     rArgs = RunArgs(dir)
     main(mArgs, rArgs)
 
 if __name__ == '__main__':
     p = [1]
-    alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
-    mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
-    mu.extend(np.linspace(1e-15, 1e-17, 6)[1:-1].tolist())
-    mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
+    # alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
+    # mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
+    # mu.extend(np.linspace(1e-15, 1e-17, 6)[1:-1].tolist())
+    # mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
 
-    with ProcessPoolExecutor(max_workers=6) as executor:
+    mu = [1e-5,1e-7,1e-10]
+    alpha = [0,0.5, 0.99]
+
+    with ProcessPoolExecutor(max_workers=64) as executor:
         futures = []
         for p_value in p:
             for mu_value in mu:

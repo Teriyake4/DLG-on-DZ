@@ -31,13 +31,13 @@ from init_util import dataset_loader, init_model
 
 
 def main(mArgs, rArgs):
-    dataset = 'cifar10'
+    dataset = mArgs.dataset
     root_path = '.'
-    print(os.path.join(root_path, '../data').replace('\\', '/'))
+    # print(os.path.join(root_path, '../data').replace('\\', '/'))
     data_path = os.path.join(root_path, '../data').replace('\\', '/')
     csvPath = os.path.join(rArgs.resultPath, "results.csv")
     with open(csvPath, 'w') as csv:
-        csv.write("index,DLG loss,DLG MSE,iDLG loss,iDLG MSE\n")
+        csv.write("index,DLG loss,DLG MSE,DLG time,iDLG loss,iDLG MSE,iDLG time\n")
 
     lr = 1
     use_cuda = torch.cuda.is_available()
@@ -48,9 +48,9 @@ def main(mArgs, rArgs):
     tt = transforms.Compose([transforms.ToTensor()])
     tp = transforms.Compose([transforms.ToPILImage()])
 
-    print(dataset, 'root_path:', root_path)
-    print(dataset, 'data_path:', data_path)
-    print(dataset, 'save_path:', rArgs.resultPath)
+    # print(dataset, 'root_path:', root_path)
+    # print(dataset, 'data_path:', data_path)
+    # print(dataset, 'save_path:', rArgs.resultPath)
 
     if not os.path.exists('results'):
         os.mkdir('results')
@@ -68,11 +68,18 @@ def main(mArgs, rArgs):
 
     ''' train DLG and iDLG '''
     for idx_net in range(0, rArgs.num_exp):
+        DLG_time = 0
+        iDLG_time = 0
         if not rArgs.single:
             idx_shuffle = np.random.default_rng(123).permutation(len(dst))
 
         print(f'Running {idx_net}|{rArgs.num_exp} experiment')
         for method in ['iDLG', "DLG"]:
+            if method == "DLG":
+                DLG_time = time.time()
+            elif method == "iDLG":
+                iDLG_time = time.time()
+
             if rArgs.single:
                 print(f'{method}, Trying to generate 1 image on [{idx_shuffle[idx_net]}]')
             else:
@@ -142,9 +149,10 @@ def main(mArgs, rArgs):
                 losses.append(current_loss)
                 mses.append(torch.mean((dummy_data - gt_data) ** 2).item())
 
-                if iteration % rArgs.printFreq == 0:
+                if iteration % rArgs.saveFreq == 0:
                     current_time = str(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()))
-                    print(current_time, iteration, 'loss = %.8f, mse = %.8f' % (current_loss, mses[-1]))
+                    if iteration % rArgs.printFreq == 0:
+                        print(current_time, iteration, 'loss = %.8f, mse = %.8f' % (current_loss, mses[-1]))
                     history.append([tp(dummy_data[imidx].cpu()) for imidx in range(rArgs.num_dummy)])
                     history_iters.append(iteration)
 
@@ -167,29 +175,35 @@ def main(mArgs, rArgs):
                     if current_loss < 0.000001:  # converge
                         break
 
+
+            print('imidx_list:', imidx_list)
             if method == 'DLG':
                 loss_DLG = losses
                 label_DLG = torch.argmax(dummy_label, dim=-1).detach().item()
                 mse_DLG = mses
+                # print('loss_DLG:', loss_DLG[-1], 'loss_iDLG:', loss_iDLG[-1])
+                # print('mse_DLG:', mse_DLG[-1], 'mse_iDLG:', mse_iDLG[-1])
+                # print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_DLG:', label_DLG, 'lab_iDLG:', label_iDLG)
+                
+                DLG_time = time.time() - DLG_time
+                print(f"Time Elapsed DLG: {DLG_time}", flush=True)
+
             elif method == 'iDLG':
                 loss_iDLG = losses
                 label_iDLG = label_pred.item()
                 mse_iDLG = mses
+                # print('loss_iDLG:', loss_iDLG[-1])
+                # print('mse_iDLG:', mse_iDLG[-1])
+                # print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_iDLG:', label_iDLG)
 
-        print('imidx_list:', imidx_list)
-        if method == 'DLG':
-            print('loss_DLG:', loss_DLG[-1], 'loss_iDLG:', loss_iDLG[-1])
-            print('mse_DLG:', mse_DLG[-1], 'mse_iDLG:', mse_iDLG[-1])
-            print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_DLG:', label_DLG, 'lab_iDLG:', label_iDLG)
-        if method == 'iDLG':
-            print('loss_iDLG:', loss_iDLG[-1])
-            print('mse_iDLG:', mse_iDLG[-1])
-            print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_iDLG:', label_iDLG)
+                iDLG_time = time.time() - iDLG_time
+                print(f"Time Elapsed iDLG: {DLG_time}", flush=True)
+                
 
         print('----------------------\n\n')
-        # index, loss, mse
+        # index,DLG loss,DLG MSE,DLG time,iDLG loss,iDLG MSE,iDLG time
         with open(csvPath, 'a') as csv:
-            csv.write(f"{imidx_list[0]},{loss_DLG[-1]},{mse_DLG[-1]},{loss_iDLG[-1]},{mse_iDLG[-1]}\n")
+            csv.write(f"{imidx_list[0]},{loss_DLG[-1]},{mse_DLG[-1]},{DLG_time},{loss_iDLG[-1]},{mse_iDLG[-1]},{iDLG_time}\n")
 
 
 def init_process(rank, world_size, mArgs, rArgs):
