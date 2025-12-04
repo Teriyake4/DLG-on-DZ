@@ -8,7 +8,9 @@ from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 from functools import partial
 from torch.distributed import rpc
+import torch.distributed as dist
 import torch.multiprocessing as mp
+import socket
 
 import sys
 
@@ -23,11 +25,11 @@ from models.distributed_model import DistributedCGEModel
 
 
 class Args():
-    def __init__(self, batch_size: int, lr: float, alpha: float, sparsity: float, mu: float, sparsity_ckpt: str):
+    def __init__(self, dataset: str, batch_size: int, lr: float, alpha: float, sparsity: float, mu: float, sparsity_ckpt: str):
         self.dry_run = False
         self.seed = 123
         self.network = "lenet"
-        self.dataset = "mnist"
+        self.dataset = dataset
         self.batch_size = batch_size
         self.zoo_step_size = mu # 1e-7
         self.epoch = 50
@@ -43,11 +45,12 @@ class Args():
         self.sparsity = sparsity
         self.sparsity_folder = "Layer_Sparsity"
         self.sparsity_ckpt = sparsity_ckpt
-        self.gpus = [1, 4, 5]
+        self.gpus = [0]
         self.process_per_gpu = 2
         self.master_addr = "localhost"
-        self.master_port = "29500"
+        self.master_port = "29572"
         self.log = True
+        self.displayProgress = False
 
 
 def main(args):
@@ -57,36 +60,41 @@ def main(args):
     set_seed(args.seed)
     exp = os.path.basename(__file__.split('.')[0])
     # save_path = os.path.join(results_path, exp, gen_folder_name(args, ignore=['log', 'gpus', 'process_per_gpu', 'master_addr', 'master_port', 'momentum', 'weight_decay', 'sparsity_folder', 'sparsity_ckpt']))
-    save_path = os.path.join(".", f"training/experiment5/training_batchSize_{args.batch_size}_lr_{args.lr}_alpha_{args.alpha}_p_{args.sparsity}/")
+    save_path = os.path.join(".", f"training/experiment_h_{args.dataset}/training_batchSize_{args.batch_size}_lr_{args.lr}_alpha_{args.alpha}_mu_{args.zoo_step_size}_p_{args.sparsity}/")
     print(save_path)
 
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-    else:
-        return
 
     # Criterion for calculating vanilla gradients
     criterion = torch.nn.CrossEntropyLoss().to(device)
 
     # Data
-    # loaders, class_num = prepare_dataset(args.dataset, args.batch_size)
     from data import alt_dataset
     loaders, class_num = alt_dataset(args.dataset, args.batch_size)
 
+    if args.dataset == "mnist":
+        hidden = 588
+        channel = 1
+    elif args.dataset == "cifar10":
+        hidden = 768
+        channel = 3
     # Network
     if args.network == "resnet20":
         from models.resnet_s import resnet20, param_name_to_module_id_rn20
         param_name_to_module_id = param_name_to_module_id_rn20
         network_init_func = resnet20
         network_kwargs = {
-            'num_classes': class_num
+            "num_classes": class_num
         }
     elif args.network == "lenet":
         from models.lenet import lenet, param_name_to_module_id_lenet
         param_name_to_module_id = param_name_to_module_id_lenet
         network_init_func = lenet
         network_kwargs = {
-            'num_classes': class_num
+            "num_classes": class_num,
+            "hidden" : hidden,
+            "channel": channel
         }
     else:
         raise NotImplementedError(f"{args.network} is not supported")
@@ -208,14 +216,16 @@ def main(args):
 
         # Test
         network.eval()
-        pbar = tqdm(loaders['test'], total=len(loaders['test']), desc=f"Epo {epoch} Testing", ncols=120)
+        if args.displayProgress:
+            pbar = tqdm(loaders['test'], total=len(loaders['test']), desc=f"Epo {epoch} Testing", ncols=120)
         acc = AverageMeter()
         for x, y in pbar:
             x, y = x.to(device), y.to(device)
             with torch.no_grad():
                 fx = network(x)
             acc.update(torch.argmax(fx, 1).eq(y).float().mean(), y.size(0))
-            pbar.set_postfix_str(f"Acc {100*acc.avg:.2f}%")
+            if args.displayProgress:
+                pbar.set_postfix_str(f"Acc {100*acc.avg:.2f}%")
         if args.log:
             logger.add_scalar("test/acc", acc.avg, epoch)
 
@@ -240,20 +250,30 @@ def main(args):
         # Cutoff
         if acc.avg == 0.9:
             print("Accuracy cutoff")
+            print(f"Time elapsed: {time.time() - start_time}")
             return
         if epoch == 10:
             print("Epoch cutoff")
+            print(f"Time elapsed: {time.time() - start_time}")
             return
+    print(f"Time elapsed: {time.time() - start_time}")
 
 
 def init_process(rank, world_size, args):
     os.environ['MASTER_ADDR'] = args.master_addr
     os.environ['MASTER_PORT'] = args.master_port
 
+    options = rpc.TensorPipeRpcBackendOptions(
+        num_worker_threads=args.process_per_gpu*world_size+1, 
+        rpc_timeout=30,
+        _transports=["shm", "uv"],  # Use Shared Memory and TCP
+        _channels=["cuda_ipc", "basic"] # Use CUDA IPC and Basic fallback
+    )
+
     if rank == 0:
         rpc.init_rpc(
                 f"master", rank=rank, world_size=world_size,
-                rpc_backend_options=rpc.TensorPipeRpcBackendOptions(num_worker_threads=args.process_per_gpu*world_size+1, rpc_timeout=0.)
+                rpc_backend_options=options
             )
         main(args)
     else:
@@ -261,7 +281,7 @@ def init_process(rank, world_size, args):
         i = (rank-1) % args.process_per_gpu
         rpc.init_rpc(
                 f"{gpu}-{i}", rank=rank, world_size=world_size,
-                rpc_backend_options=rpc.TensorPipeRpcBackendOptions(num_worker_threads=args.process_per_gpu*world_size+1, rpc_timeout=0.)
+                rpc_backend_options=options
             )
     rpc.shutdown()
 
@@ -277,13 +297,29 @@ if __name__ == "__main__":
     # alpha 0.9, 0.95, 0.99, 0.999, 1
     # batch size 128, 256, 512
     # revert scheduler changes
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", type=str, choices=["mnist", "cifar10"])
+    parser.add_argument("--lr", type=float)
+    parser.add_argument("--batch_size", type=int)
+    parser.add_argument("--alpha", type=float)
+    parser.add_argument("--mu", type=float)
+    parser.add_argument("--p", type=float)
 
-    for lr in [0.1]:
-        for batch_size in [128, 256, 512]:
-            for alpha in np.arange(0.5, 0.9, 0.1).tolist() + [0.9, 0.95, 0.99, 0.999, 1]:
-                for mu in [9.23e-10, 6.92e-10, 3.85e-10, 1.54e-10, 1e-5, 1e-7, 1e-9, 1e-15, 1e-17, 1e-30]:
-                    for p in [0]:
-                        args = Args(batch_size, lr, alpha, p, mu, f"zo_grasp_{p:.1f}")
+    inputArgs = parser.parse_args()
 
-                        world_size = 1 + len(args.gpus) * args.process_per_gpu
-                        mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
+    # Obtain free port
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('', 0))  # Bind to an available port on all interfaces
+    port = s.getsockname()[1]  # Get the assigned port number
+    s.close()
+
+    # for lr in [0.1]:
+    #     for batch_size in [128, 256]: # [128, 256, 512]
+    #         for alpha in np.arange(0.5, 1, 0.2).tolist() + [0.9, 0.999, 1]: # np.arange(0.5, 0.9, 0.1).tolist() + + [0.9, 0.95, 0.99, 0.999, 1]
+    #             for mu in [1.54e-10, 1e-5, 1e-9, 1e-15, 1e-30]: # [9.23e-10, 6.92e-10, 3.85e-10, 1.54e-10, 1e-5, 1e-7, 1e-9, 1e-15, 1e-17, 1e-30]
+    #                 for p in [0]:
+    args = Args(inputArgs.dataset, inputArgs.batch_size, inputArgs.lr, inputArgs.alpha, inputArgs.p, inputArgs.mu, f"zo_grasp_{inputArgs.p:.1f}")
+    args.master_port = str(port)
+
+    world_size = 1 + len(args.gpus) * args.process_per_gpu
+    mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
