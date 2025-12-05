@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import multiprocessing
 import torch
 torch.set_num_threads(1)
 torch.set_default_dtype(torch.float32)
@@ -8,6 +7,7 @@ torch.set_default_dtype(torch.float32)
 from attack import main, init_process
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
+from multiprocessing import Lock
 
 class ModelArgs:
     def __init__(self, p, mu):
@@ -46,6 +46,7 @@ class RunArgs:
         self.exper_name = f'bisect_for_alpha_112725_FULL_RUN_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
         self.resultPath = os.path.join('.', f'results/{self.exper_name}/mu={mu_value}').replace('\\', '/')
         self.inversion_methods = ['DLG', 'iDLG']
+        self.lock = Lock()
         os.makedirs(self.resultPath, exist_ok=True)
 
 
@@ -63,20 +64,17 @@ if __name__ == '__main__':
     alpha = [1]
     mu = [1e-5]
     max_workers = 1
-    for p_value in p:
-        for mu_value in mu:
-                run(p_value, mu_value)
-    # with ProcessPoolExecutor(max_workers=max_workers) as executor:
-    #     futures = []
-    #     for p_value in p:
-    #         for mu_value in mu:
-    #             for alpha_value in alpha:
-    #                 # if os.path.isd
-    #                 # futures.append(executor.submit(run, p_value, mu_value, alpha_value))
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
+        for p_value in p:
+            for mu_value in mu:
+                for alpha_value in alpha:
+                    # if os.path.isd
+                    futures.append(executor.submit(run, p_value, mu_value))
         
-    #     for future in futures:
-    #         future.result()
-    #             # for gpu
-    #             # world_size = 1 + len(args.gpus) * args.process_per_gpu
-    #             # init_process(0, world_size, args)
-    #             # mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)
+        for future in futures:
+            future.result()
+                # for gpu
+                # world_size = 1 + len(args.gpus) * args.process_per_gpu
+                # init_process(0, world_size, args)
+                # mp.spawn(init_process, args=(world_size, args), nprocs=world_size, join=True)

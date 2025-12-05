@@ -30,22 +30,25 @@ from init_util import dataset_loader, init_model
 # find the starting value of p
 # high p
 
-def log(msg, log_path):
-    with open(log_path, 'a') as f:
-        f.write(f"{msg}\n")
-def init_csv_write(csvPath, inversion_methods):
+def log(msg, log_path, lock):
+    with lock:
+        with open(log_path, 'a') as f:
+            f.write(f"{msg}\n")
+
+def init_csv_write(csvPath, inversion_methods, lock):
     inversion_methods = set(inversion_methods)
-    if inversion_methods == {'iDLG', 'DLG'}:
-        with open(csvPath, 'w') as csv:
-            csv.write("index,DLG loss,DLG MSE,DLG label correct,DLG alpha_star,DLG secs elapsed,iDLG loss,iDLG MSE,iDLG label correct,iDLG alpha_star,iDLG secs elapsed\n")
-    elif inversion_methods == {'DLG'}:
-        with open(csvPath, 'w') as csv:
-            csv.write("index,DLG loss,DLG MSE,DLG label correct,DLG alpha_star,DLG secs elapsed\n")
-    elif inversion_methods == {'iDLG'}:
-        with open(csvPath, 'w') as csv:
-            csv.write("index,iDLG loss,iDLG MSE,iDLG label correct,iDLG alpha_star,iDLG secs elapsed\n")
-    else:
-        raise ValueError('Entries in list of inversion methods are not in acceptable formats.  Please check and try again.')
+    with lock:
+        if inversion_methods == {'iDLG', 'DLG'}:
+            with open(csvPath, 'w') as csv:
+                csv.write("index,DLG loss,DLG MSE,DLG label correct,DLG alpha_star,DLG secs elapsed,iDLG loss,iDLG MSE,iDLG label correct,iDLG alpha_star,iDLG secs elapsed\n")
+        elif inversion_methods == {'DLG'}:
+            with open(csvPath, 'w') as csv:
+                csv.write("index,DLG loss,DLG MSE,DLG label correct,DLG alpha_star,DLG secs elapsed\n")
+        elif inversion_methods == {'iDLG'}:
+            with open(csvPath, 'w') as csv:
+                csv.write("index,iDLG loss,iDLG MSE,iDLG label correct,iDLG alpha_star,iDLG secs elapsed\n")
+        else:
+            raise ValueError('Entries in list of inversion methods are not in acceptable formats.  Please check and try again.')
 
 def main(mArgs, rArgs):
     dataset = mArgs.dataset
@@ -84,8 +87,6 @@ def main(mArgs, rArgs):
 
     ''' train DLG and iDLG '''
     for idx_net in range(0, rArgs.num_exp):
-        DLG_time = 0
-        iDLG_time = 0
         if not rArgs.single:
             idx_shuffle = np.random.default_rng(123).permutation(len(dst))
 
@@ -156,9 +157,9 @@ def main(mArgs, rArgs):
             except Exception as e:
                 print('Error:', e)
                 print(traceback.format_exc())
-                log(f"Error encountered in {method}, at idx_net={idx_net}:{e}", log_path)
-                log('Full traceback:', log_path)
-                log(traceback.format_exc(), log_path)
+                log(f"Error encountered in {method}, at idx_net={idx_net}:{e}", log_path, rArgs.lock)
+                log('Full traceback:', log_path, rArgs.lock)
+                log(traceback.format_exc(), log_path, rArgs.lock)
 
         
         print('imidx_list:', imidx_list)
@@ -184,18 +185,19 @@ def main(mArgs, rArgs):
             locals().get('loss_iDLG', None), locals().get('mse_iDLG', None), locals().get('label_acc_iDLG', None), locals().get('alpha_star_iDLG', None), locals().get('secs_elapsed_iDLG', None)
         
         write_to_csv(csvPath, method, imidx_list, loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG,
-                     loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, rArgs.inversion_methods)
+                     loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, rArgs.inversion_methods, rArgs.lock)
         
-def write_to_csv(csvPath, method, imidx_list, loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG, loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, inversion_methods):
-    if set(inversion_methods) == {'iDLG', 'DLG'}:
-        with open(csvPath, 'a') as csv:
-            csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{label_acc_DLG},{alpha_star_DLG},{secs_elapsed_DLG},{loss_iDLG},{mse_iDLG},{label_acc_iDLG},{alpha_star_iDLG},{secs_elapsed_iDLG}\n")
-    elif 'DLG' in inversion_methods:
-        with open(csvPath, 'a') as csv:
-            csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{label_acc_DLG},{alpha_star_DLG},{secs_elapsed_DLG}\n")
-    else:
-        with open(csvPath, 'a') as csv:
-            csv.write(f"{imidx_list[0]},{loss_iDLG},{mse_iDLG},{label_acc_iDLG},{alpha_star_iDLG},{secs_elapsed_iDLG}\n")
+def write_to_csv(csvPath, method, imidx_list, loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG, loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, inversion_methods, lock):
+    with lock:
+        if set(inversion_methods) == {'iDLG', 'DLG'}:
+            with open(csvPath, 'a') as csv:
+                csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{label_acc_DLG},{alpha_star_DLG},{secs_elapsed_DLG},{loss_iDLG},{mse_iDLG},{label_acc_iDLG},{alpha_star_iDLG},{secs_elapsed_iDLG}\n")
+        elif 'DLG' in inversion_methods:
+            with open(csvPath, 'a') as csv:
+                csv.write(f"{imidx_list[0]},{loss_DLG},{mse_DLG},{label_acc_DLG},{alpha_star_DLG},{secs_elapsed_DLG}\n")
+        else:
+            with open(csvPath, 'a') as csv:
+                csv.write(f"{imidx_list[0]},{loss_iDLG},{mse_iDLG},{label_acc_iDLG},{alpha_star_iDLG},{secs_elapsed_iDLG}\n")
 
 def init_process(rank, world_size, mArgs, rArgs):
     os.environ['MASTER_ADDR'] = mArgs.master_addr
