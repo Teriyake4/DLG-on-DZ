@@ -1,7 +1,8 @@
 import os
 import numpy as np
+import multiprocessing
 import torch
-torch.set_num_threads(2)
+torch.set_num_threads(1)
 torch.set_default_dtype(torch.float32)
 
 from attack import main, init_process
@@ -11,6 +12,7 @@ from functools import partial
 class ModelArgs:
     def __init__(self, p, mu):
         self.sparsity_folder = "Layer_Sparsity"
+        self.dataset = "mnist"
         self.network = "lenet"  # lenet, resnet20
         self.zero = True
         self.sparsity = p  # p

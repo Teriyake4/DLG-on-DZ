@@ -48,9 +48,9 @@ def init_csv_write(csvPath, inversion_methods):
         raise ValueError('Entries in list of inversion methods are not in acceptable formats.  Please check and try again.')
 
 def main(mArgs, rArgs):
-    dataset = 'MNIST'
+    dataset = mArgs.dataset
     root_path = '.'
-    print(os.path.join(root_path, '../data').replace('\\', '/'))
+    # print(os.path.join(root_path, '../data').replace('\\', '/'))
     data_path = os.path.join(root_path, '../data').replace('\\', '/')
     csvPath = os.path.join(rArgs.resultPath, "results.csv")
     init_csv_write(csvPath, rArgs.inversion_methods)
@@ -63,9 +63,9 @@ def main(mArgs, rArgs):
     tt = transforms.Compose([transforms.ToTensor()])
     tp = transforms.Compose([transforms.ToPILImage()])
 
-    print(dataset, 'root_path:', root_path)
-    print(dataset, 'data_path:', data_path)
-    print(dataset, 'save_path:', rArgs.resultPath)
+    # print(dataset, 'root_path:', root_path)
+    # print(dataset, 'data_path:', data_path)
+    # print(dataset, 'save_path:', rArgs.resultPath)
 
     if not os.path.exists('results'):
         os.mkdir('results')
@@ -84,6 +84,8 @@ def main(mArgs, rArgs):
 
     ''' train DLG and iDLG '''
     for idx_net in range(0, rArgs.num_exp):
+        DLG_time = 0
+        iDLG_time = 0
         if not rArgs.single:
             idx_shuffle = np.random.default_rng(123).permutation(len(dst))
 
