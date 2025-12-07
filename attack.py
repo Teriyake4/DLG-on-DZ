@@ -56,7 +56,7 @@ def main(mArgs, rArgs):
     # print(os.path.join(root_path, '../data').replace('\\', '/'))
     data_path = os.path.join(root_path, '../data').replace('\\', '/')
     csvPath = os.path.join(rArgs.resultPath, "results.csv")
-    init_csv_write(csvPath, rArgs.inversion_methods)
+    init_csv_write(csvPath, rArgs.inversion_methods, rArgs.lock)
     log_path = os.path.join(rArgs.resultPath, 'log.txt')
     use_cuda = torch.cuda.is_available()
     device = f'cuda:{mArgs.gpus[0]}' if use_cuda else 'cpu'
