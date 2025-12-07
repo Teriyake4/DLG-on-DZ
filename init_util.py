@@ -19,6 +19,7 @@ from tools.meter import AverageMeter
 from tools.training import warmup_lr
 
 def dataset_loader(dataset, data_path):
+    dataset = dataset.upper()
     if dataset == 'MNIST':
         shape_img = (28, 28)
         num_classes = 10
