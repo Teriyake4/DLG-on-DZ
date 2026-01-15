@@ -1,3 +1,4 @@
+import argparse
 import os
 import numpy as np
 import torch
@@ -13,7 +14,7 @@ class ModelArgs:
     def __init__(self, p, mu):
         self.sparsity_folder = "Layer_Sparsity"
         self.dataset = "mnist"
-        self.network = "lenet"  # lenet, resnet20
+        self.network = "lenet"  # lenet, resnet20, lenetAlt
         self.zero = True
         self.sparsity = p  # p
         self.sparsity_ckpt = f"zo_grasp_{self.sparsity}"
@@ -40,10 +41,11 @@ class RunArgs:
         self.printFreq = 20
         self.num_dummy = 1
         self.num_exp = 100
-        self.num_attack_iterations = 600
+        self.num_samples = 100 # Number of times to repeat attack with same alpha on same image
+        self.num_attack_iterations = 600 # Number of iterations within attack
         self.num_alpha_search_evals = 50
         self.epsilon_squared = 1e-1
-        self.exper_name = f'bisect_for_alpha_112725_FULL_RUN_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
+        self.exper_name = f'bisect_for_alpha_2_TEST_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
         self.resultPath = os.path.join('.', f'results/{self.exper_name}/mu={mu_value}').replace('\\', '/')
         self.inversion_methods = ['DLG', 'iDLG']
         self.lock = Lock()
@@ -56,24 +58,35 @@ def run(p_value, mu_value):
     main(mArgs, rArgs)
 
 if __name__ == '__main__':
+
     p = [1]
     # alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
-    # mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
-    # mu.extend(np.linspace(1e-15, 1e-17, 6)[1:-1].tolist())
-    # mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
+    mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
+    mu.extend(np.linspace(1e-15, 1e-17, 6)[1:-1].tolist())
+    mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
     alpha = [1]
-    mu = [1e-5]
-    max_workers = 1
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for p_value in p:
-            for mu_value in mu:
-                for alpha_value in alpha:
-                    # if os.path.isd
-                    futures.append(executor.submit(run, p_value, mu_value))
+    # mu = [1e-5]
+    max_workers = os.cpu_count()
+    print(f"Up to {max_workers} cores")
+    task_id = int(os.environ.get('SLURM_ARRAY_TASK_ID', 0))
+
+    if task_id < len(mu):
+        mu_value = mu[task_id]
+    else:
+        raise ValueError(f"Task ID {task_id} is out of bounds for mu_list of size {len(mu)}")
+
+    print(f"Job ID: {task_id} | Using mu: {mu_value}")
+    run(p[0], mu_value)
+    # with ProcessPoolExecutor(max_workers=1) as executor:
+    #     futures = []
+    #     for p_value in p:
+    #         for mu_value in mu:
+    #             for alpha_value in alpha:
+    #                 # if os.path.isd
+    #                 futures.append(executor.submit(run, p_value, mu_value))
         
-        for future in futures:
-            future.result()
+        # for future in futures:
+        #     future.result()
                 # for gpu
                 # world_size = 1 + len(args.gpus) * args.process_per_gpu
                 # init_process(0, world_size, args)

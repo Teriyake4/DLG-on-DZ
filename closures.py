@@ -35,7 +35,7 @@ class BaseClosure:
 
 def inv_attack(ghat, net, criterion, method, gt_data, gt_label,
                num_iterations, printfreq, num_dummy, result_path, imidx_list, tp, doplot, device, num_classes, 
-               tol=0.000001, lr=1, verbose=True, alpha_star=None):
+               tol=0.000001, lr=1, verbose=True, alpha_star=None, sample_num=0):
     dummy_data = torch.randn(gt_data.size()).to(device).requires_grad_(True)
     if method == 'DLG':
         dummy_label = torch.randn((gt_data.shape[0], num_classes)).to(device).requires_grad_(True)
@@ -67,10 +67,10 @@ def inv_attack(ghat, net, criterion, method, gt_data, gt_label,
                         print('Attack stopped early due to loss dropping below tol.')
                     break
     if doplot:
-        do_the_plot(num_dummy, num_classes, gt_data, gt_label, dummy_label, history, history_iters, mses, alpha_star, result_path, imidx_list, method, tp)
+        do_the_plot(num_dummy, num_classes, gt_data, gt_label, dummy_label, history, history_iters, mses, alpha_star, result_path, imidx_list, method, tp, sample_num)
     return float(mses[-1]), float(losses[-1]), dummy_data, dummy_label
 
-def do_the_plot(num_dummy, num_classes, gt_data, gt_label, dummy_label, history, history_iters, mses, alpha_star, result_path, imidx_list, method, tp):
+def do_the_plot(num_dummy, num_classes, gt_data, gt_label, dummy_label, history, history_iters, mses, alpha_star, result_path, imidx_list, method, tp, sample_num):
     for imidx in range(num_dummy):
         num_history = len(history)
         total_plots = 1 + num_history  # Ground truth + history
@@ -174,10 +174,10 @@ def do_the_plot(num_dummy, num_classes, gt_data, gt_label, dummy_label, history,
                 y=0.98, fontsize=12)
 
     if method == 'DLG':
-        plt.savefig('%s/DLG_on_%s_%05d.png' % (result_path, imidx_list, imidx_list[imidx]))
+        plt.savefig('%s/DLG_on_%s_%05d_%03d.png' % (result_path, imidx_list, imidx_list[imidx], sample_num))
         plt.close()
     elif method == 'iDLG':
-        plt.savefig('%s/iDLG_on_%s_%05d.png' % (result_path, imidx_list, imidx_list[imidx]))
+        plt.savefig('%s/iDLG_on_%s_%05d_%03d.png' % (result_path, imidx_list, imidx_list[imidx], sample_num))
         plt.close()
 
 

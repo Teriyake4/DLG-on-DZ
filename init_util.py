@@ -12,6 +12,7 @@ from tqdm import tqdm
 from algorithm.prune import global_prune, check_sparsity, extract_mask, remove_prune
 from algorithm.zoo import cge_weight_allocate_to_process, cge_calculation, network_synchronize
 from models.distributed_model import DistributedCGEModel
+from models.lenetAlt import LeNetAlt, param_name_to_module_id_lenet_alt
 from models.lenet import lenet, param_name_to_module_id_lenet
 from models.tools import time_consumption_per_layer
 from models.resnet_s import resnet20, param_name_to_module_id_rn20
@@ -26,24 +27,24 @@ def dataset_loader(dataset, data_path):
         channel = 1
         hidden = 588
         dst = datasets.MNIST(data_path, download=True)
-    elif dataset == 'cifar100':
+    elif dataset == 'CIFAR00':
         shape_img = (32, 32)
         num_classes = 100
         channel = 3
         hidden = 768
         dst = datasets.CIFAR100(data_path, download=True)
-    elif dataset == 'cifar10':
+    elif dataset == 'CIFAR10':
         shape_img = (32, 32)
         num_classes = 10
         channel = 3
         hidden = 768
         dst = datasets.CIFAR10(data_path, download=True)
     else:
-        exit('unknown dataset')
+        exit(f'unknown dataset: {dataset}')
 
     return (shape_img, num_classes, channel, hidden, dst)
 
-def init_model(device, mArgs, class_num, hidden, channel):
+def init_model(device, mArgs, class_num, hidden, channel, input_size):
     if mArgs.network == "resnet20":
         # param_name_to_module_id = param_name_to_module_id_rn20
         network_init_func = resnet20
@@ -57,6 +58,13 @@ def init_model(device, mArgs, class_num, hidden, channel):
             'channel': channel,
             'hidden': hidden,
             'num_classes': class_num
+        }
+    elif mArgs.network == "lenetAlt":
+        network_init_func = LeNetAlt
+        network_kwargs = {
+            "num_classes": class_num,
+            "channels" : channel,
+            "input_size": input_size
         }
     else:
         raise NotImplementedError
@@ -72,6 +80,7 @@ def init_model(device, mArgs, class_num, hidden, channel):
     return net
 
 def net_prep(net, mArgs):
+    # function not used
     class_num = 10
     hidden = 588
     channel = 1
