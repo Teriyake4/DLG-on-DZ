@@ -28,7 +28,7 @@ class Args():
     def __init__(self, dataset: str, batch_size: int, lr: float, alpha: float, sparsity: float, mu: float, sparsity_ckpt: str):
         self.dry_run = False
         self.seed = 123
-        self.network = "lenet"
+        self.network = "lenetAlt"
         self.dataset = dataset
         self.batch_size = batch_size
         self.zoo_step_size = mu # 1e-7
@@ -76,9 +76,11 @@ def main(args):
     if args.dataset == "mnist":
         hidden = 588
         channel = 1
+        input_size = (28, 28)
     elif args.dataset == "cifar10":
         hidden = 768
         channel = 3
+        input_size = (32, 32)
     # Network
     if args.network == "resnet20":
         from models.resnet_s import resnet20, param_name_to_module_id_rn20
@@ -95,6 +97,15 @@ def main(args):
             "num_classes": class_num,
             "hidden" : hidden,
             "channel": channel
+        }
+    elif args.network == "lenetAlt":
+        from models.lenetAlt import LeNetAlt, param_name_to_module_id_lenet_alt
+        param_name_to_module_id = param_name_to_module_id_lenet_alt
+        network_init_func = LeNetAlt
+        network_kwargs = {
+            "num_classes": class_num,
+            "channels" : channel,
+            "input_size": input_size
         }
     else:
         raise NotImplementedError(f"{args.network} is not supported")
@@ -318,7 +329,7 @@ if __name__ == "__main__":
     #         for alpha in np.arange(0.5, 1, 0.2).tolist() + [0.9, 0.999, 1]: # np.arange(0.5, 0.9, 0.1).tolist() + + [0.9, 0.95, 0.99, 0.999, 1]
     #             for mu in [1.54e-10, 1e-5, 1e-9, 1e-15, 1e-30]: # [9.23e-10, 6.92e-10, 3.85e-10, 1.54e-10, 1e-5, 1e-7, 1e-9, 1e-15, 1e-17, 1e-30]
     #                 for p in [0]:
-    args = Args(inputArgs.dataset, inputArgs.batch_size, inputArgs.lr, inputArgs.alpha, inputArgs.p, inputArgs.mu, f"zo_grasp_{inputArgs.p:.1f}")
+    args = Args(inputArgs.dataset, inputArgs.batch_size, inputArgs.lr, inputArgs.alpha, inputArgs.p, inputArgs.mu, f"{inputArgs.dataset}/zo_grasp_{inputArgs.p:.1f}")
     args.master_port = str(port)
 
     world_size = 1 + len(args.gpus) * args.process_per_gpu
