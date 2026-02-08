@@ -51,8 +51,59 @@ def init_csv_write(csvPath, inversion_methods, lock):
                 csv.write("index,iDLG loss,iDLG MSE,iDLG label correct,iDLG alpha_star,iDLG secs elapsed\n")
         else:
             raise ValueError('Entries in list of inversion methods are not in acceptable formats.  Please check and try again.')
+
+def get_alphas(idx_net, idx_shuffle, rArgs, mArgs, dst, net, criterion, num_classes, device):
+    tt = transforms.Compose([transforms.ToTensor()])
+    imidx_list = []
+    for imidx in range(rArgs.num_dummy):
+        if rArgs.single:
+            idx = idx_shuffle[idx_net]
+        else:
+            idx = idx_shuffle[imidx]
+        imidx_list.append(idx)
+        tmp_datum = tt(dst[idx][0]).float().to(device)
+        tmp_datum = tmp_datum.view(1, *tmp_datum.size())
+        tmp_label = torch.Tensor([dst[idx][1]]).long().to(device)
+        tmp_label = tmp_label.view(1, )
+        if imidx == 0:
+            gt_data = tmp_datum
+            gt_label = tmp_label
+        else:
+            gt_data = torch.cat((gt_data, tmp_datum), dim=0)
+            gt_label = torch.cat((gt_label, tmp_label), dim=0)
+
+    params_dict = {
+        name: p for name, p in net.named_parameters() if p.requires_grad
+    }
+    mask_dict = {
+        name: p for name, p in net.named_buffers() if 'mask' in name
+    }
+    dy_dx = opt.cge(opt.f, params_dict, mask_dict, mArgs.zoo_step_size, net, gt_data, gt_label, F.cross_entropy)
+    # compute original gradient
+    out = net(gt_data)
+    y = criterion(out, gt_label)
+    vanilla_dy_dx = torch.autograd.grad(y, net.parameters())
+    vanilla_dy_dx = [grad.detach().clone() for grad in vanilla_dy_dx]
+    zo_dy_dx = [grad.detach().clone() for grad in dy_dx]
+    verbose = True
+    with ProcessPoolExecutor(max_workers=2) as executor:
+        DLG_future = executor.submit(
+            closures.optimize_alpha, vanilla_dy_dx, zo_dy_dx, net, criterion, 'DLG', gt_data, gt_label,
+                                        rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
+                                        rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
+                                        device, num_classes, rArgs.printFreq
+        )
+        iDLG_future = executor.submit(
+            closures.optimize_alpha, vanilla_dy_dx, zo_dy_dx, net, criterion, 'iDLG', gt_data, gt_label,
+                                            rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
+                                            rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
+                                            device, num_classes, rArgs.printFreq
+            )
+        DLG_alpha_star = DLG_future.result()
+        iDLG_alpha_star = iDLG_future.result()
+    return DLG_alpha_star, iDLG_alpha_star
         
-def run_single_image(idx_net, idx_shuffle, rArgs, mArgs, log_path, csvPath, dst, net, criterion, num_classes, device):
+def run_single_image(idx_net, idx_shuffle, rArgs, mArgs, log_path, csvPath, dst, net, criterion, num_classes, device, DLG_alpha_star, iDLG_alpha_star):
     tt = transforms.Compose([transforms.ToTensor()])
     tp = transforms.Compose([transforms.ToPILImage()])
     if not rArgs.single:
@@ -60,122 +111,114 @@ def run_single_image(idx_net, idx_shuffle, rArgs, mArgs, log_path, csvPath, dst,
     
     print(f'Running {idx_net}|{rArgs.num_exp} experiment, with {rArgs.num_samples} samples per experiment')
     
-    DLG_alpha_star = None
-    iDLG_alpha_star = None
-    for sample_num in range(0, rArgs.num_samples):
-        for method in rArgs.inversion_methods:
-            t0 = time.time()
-            if rArgs.single:
-                print(f'\n{method}, Trying to generate 1 image on [{idx_shuffle[idx_net]}]')
-            else:
-                print(f'\n{method}, Try to generate {rArgs.num_dummy} images')
-            try:
-                imidx_list = []
-                for imidx in range(rArgs.num_dummy):
-                    if rArgs.single:
-                        idx = idx_shuffle[idx_net]
-                    else:
-                        idx = idx_shuffle[imidx]
-                    imidx_list.append(idx)
-                    tmp_datum = tt(dst[idx][0]).float().to(device)
-                    tmp_datum = tmp_datum.view(1, *tmp_datum.size())
-                    tmp_label = torch.Tensor([dst[idx][1]]).long().to(device)
-                    tmp_label = tmp_label.view(1, )
-                    if imidx == 0:
-                        gt_data = tmp_datum
-                        gt_label = tmp_label
-                    else:
-                        gt_data = torch.cat((gt_data, tmp_datum), dim=0)
-                        gt_label = torch.cat((gt_label, tmp_label), dim=0)
+    for method in rArgs.inversion_methods:
+        t0 = time.time()
+        if rArgs.single:
+            print(f'\n{method}, Trying to generate 1 image on [{idx_shuffle[idx_net]}]')
+        else:
+            print(f'\n{method}, Try to generate {rArgs.num_dummy} images')
+        try:
+            imidx_list = []
+            for imidx in range(rArgs.num_dummy):
+                if rArgs.single:
+                    idx = idx_shuffle[idx_net]
+                else:
+                    idx = idx_shuffle[imidx]
+                imidx_list.append(idx)
+                tmp_datum = tt(dst[idx][0]).float().to(device)
+                tmp_datum = tmp_datum.view(1, *tmp_datum.size())
+                tmp_label = torch.Tensor([dst[idx][1]]).long().to(device)
+                tmp_label = tmp_label.view(1, )
+                if imidx == 0:
+                    gt_data = tmp_datum
+                    gt_label = tmp_label
+                else:
+                    gt_data = torch.cat((gt_data, tmp_datum), dim=0)
+                    gt_label = torch.cat((gt_label, tmp_label), dim=0)
 
-                params_dict = {
-                    name: p for name, p in net.named_parameters() if p.requires_grad
-                }
-                mask_dict = {
-                    name: p for name, p in net.named_buffers() if 'mask' in name
-                }
-                dy_dx = opt.cge(opt.f, params_dict, mask_dict, mArgs.zoo_step_size, net, gt_data, gt_label, F.cross_entropy)
-                # compute original gradient
-                out = net(gt_data)
-                y = criterion(out, gt_label)
-                vanilla_dy_dx = torch.autograd.grad(y, net.parameters())
-                vanilla_dy_dx = [grad.detach().clone() for grad in vanilla_dy_dx]
-                zo_dy_dx = [grad.detach().clone() for grad in dy_dx]
-                verbose = True
-                if method == 'DLG':
-                    if DLG_alpha_star == None:
-                        DLG_alpha_star = closures.optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
-                                                            rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
-                                                            rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
-                                                            device, num_classes, rArgs.printFreq)
-                    alpha_star = DLG_alpha_star
-                elif method == 'iDLG':
-                    if iDLG_alpha_star == None:
-                        iDLG_alpha_star = closures.optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
-                                                            rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
-                                                            rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
-                                                            device, num_classes, rArgs.printFreq)
-                    alpha_star = iDLG_alpha_star
-                
-                zo_dy_dx_nudge = closures.nudge_estimate(zo_dy_dx, vanilla_dy_dx, alpha_star)
-                print('Now performing gradient inversion on nudged CGE')
-                mse, loss, x_inv, y_inv = closures.inv_attack(zo_dy_dx_nudge, net, criterion, method, gt_data, gt_label, rArgs.num_attack_iterations,
-                                                                    rArgs.printFreq, rArgs.num_dummy, rArgs.resultPath, imidx_list, 
-                                                                    tp, False, device, num_classes, alpha_star=alpha_star, sample_num=sample_num)
-                t1 = time.time()
-                if method == 'DLG':
-                    loss_DLG = loss
-                    label_DLG = torch.argmax(y_inv, dim=-1).detach().item()
-                    label_acc_DLG = int(label_DLG == gt_label.item())
-                    mse_DLG = mse
-                    alpha_star_DLG = DLG_alpha_star
-                    secs_elapsed_DLG = round(t1-t0, 2)
-                elif method == 'iDLG':
-                    loss_iDLG = loss
-                    label_iDLG = y_inv.item()
-                    label_acc_iDLG = int(label_iDLG == gt_label.item())
-                    mse_iDLG = mse
-                    alpha_star_iDLG = iDLG_alpha_star
-                    secs_elapsed_iDLG = round(t1-t0, 2)
-            except Exception as e:
-                print('Error:', e)
-                print(traceback.format_exc())
-                log(f"Error encountered in {method}, at idx_net={idx_net}:{e}", log_path, rArgs.lock)
-                log('Full traceback:', log_path, rArgs.lock)
-                log(traceback.format_exc(), log_path, rArgs.lock)
+            params_dict = {
+                name: p for name, p in net.named_parameters() if p.requires_grad
+            }
+            mask_dict = {
+                name: p for name, p in net.named_buffers() if 'mask' in name
+            }
+            dy_dx = opt.cge(opt.f, params_dict, mask_dict, mArgs.zoo_step_size, net, gt_data, gt_label, F.cross_entropy)
+            # compute original gradient
+            out = net(gt_data)
+            y = criterion(out, gt_label)
+            vanilla_dy_dx = torch.autograd.grad(y, net.parameters())
+            vanilla_dy_dx = [grad.detach().clone() for grad in vanilla_dy_dx]
+            zo_dy_dx = [grad.detach().clone() for grad in dy_dx]
+            verbose = True
+            if method == 'DLG':
+                if DLG_alpha_star == None:
+                    DLG_alpha_star = closures.optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
+                                                        rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
+                                                        rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
+                                                        device, num_classes, rArgs.printFreq)
+                alpha_star = DLG_alpha_star
+            elif method == 'iDLG':
+                if iDLG_alpha_star == None:
+                    iDLG_alpha_star = closures.optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
+                                                        rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
+                                                        rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
+                                                        device, num_classes, rArgs.printFreq)
+                alpha_star = iDLG_alpha_star
+            
+            zo_dy_dx_nudge = closures.nudge_estimate(zo_dy_dx, vanilla_dy_dx, alpha_star)
+            print('Now performing gradient inversion on nudged CGE')
+            mse, loss, x_inv, y_inv = closures.inv_attack(zo_dy_dx_nudge, net, criterion, method, gt_data, gt_label, rArgs.num_attack_iterations,
+                                                                rArgs.printFreq, rArgs.num_dummy, rArgs.resultPath, imidx_list, 
+                                                                tp, False, device, num_classes, alpha_star=alpha_star) # , sample_num=sample_num
+            t1 = time.time()
+            if method == 'DLG':
+                loss_DLG = loss
+                label_DLG = torch.argmax(y_inv, dim=-1).detach().item()
+                label_acc_DLG = int(label_DLG == gt_label.item())
+                mse_DLG = mse
+                alpha_star_DLG = DLG_alpha_star
+                secs_elapsed_DLG = round(t1-t0, 2)
+            elif method == 'iDLG':
+                loss_iDLG = loss
+                label_iDLG = y_inv.item()
+                label_acc_iDLG = int(label_iDLG == gt_label.item())
+                mse_iDLG = mse
+                alpha_star_iDLG = iDLG_alpha_star
+                secs_elapsed_iDLG = round(t1-t0, 2)
+        except Exception as e:
+            print('Error:', e)
+            print(traceback.format_exc())
+            log(f"Error encountered in {method}, at idx_net={idx_net}:{e}", log_path, rArgs.lock)
+            log('Full traceback:', log_path, rArgs.lock)
+            log(traceback.format_exc(), log_path, rArgs.lock)
 
-        
-        print('imidx_list:', imidx_list)
-        if method == 'DLG':
-            try:
-                print('loss_DLG:', loss_DLG, 'loss_iDLG:', loss_iDLG)
-                print('mse_DLG:', mse_DLG, 'mse_iDLG:', mse_iDLG)
-                print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_DLG:', label_DLG, 'lab_iDLG:', label_iDLG)
-            except:
-                continue
-        if method == 'iDLG':
-            try:
-                print('loss_iDLG:', loss_iDLG)
-                print('mse_iDLG:', mse_iDLG)
-                print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_iDLG:', label_iDLG)
-            except:
-                continue
+    
+    print('imidx_list:', imidx_list)
+    if method == 'DLG':
+        print('loss_DLG:', loss_DLG, 'loss_iDLG:', loss_iDLG)
+        print('mse_DLG:', mse_DLG, 'mse_iDLG:', mse_iDLG)
+        print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_DLG:', label_DLG, 'lab_iDLG:', label_iDLG)
+    if method == 'iDLG':
+        print('loss_iDLG:', loss_iDLG)
+        print('mse_iDLG:', mse_iDLG)
+        print('gt_label:', gt_label.detach().cpu().data.numpy(), 'lab_iDLG:', label_iDLG)
 
-        print('----------------------\n\n')
+    print('----------------------\n\n')
 
-        loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG, loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG = \
-            locals().get('loss_DLG', None), locals().get('mse_DLG', None), locals().get('label_acc_DLG', None), locals().get('alpha_star_DLG', None), locals().get('secs_elapsed_DLG', None),\
-            locals().get('loss_iDLG', None), locals().get('mse_iDLG', None), locals().get('label_acc_iDLG', None), locals().get('alpha_star_iDLG', None), locals().get('secs_elapsed_iDLG', None)
-        
-        write_to_csv(csvPath, method, imidx_list, loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG,
-                    loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, rArgs.inversion_methods, rArgs.lock)
+    loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG, loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG = \
+        locals().get('loss_DLG', None), locals().get('mse_DLG', None), locals().get('label_acc_DLG', None), locals().get('alpha_star_DLG', None), locals().get('secs_elapsed_DLG', None),\
+        locals().get('loss_iDLG', None), locals().get('mse_iDLG', None), locals().get('label_acc_iDLG', None), locals().get('alpha_star_iDLG', None), locals().get('secs_elapsed_iDLG', None)
+    
+    write_to_csv(csvPath, method, imidx_list, loss_DLG, mse_DLG, label_acc_DLG, alpha_star_DLG, secs_elapsed_DLG,
+                loss_iDLG, mse_iDLG, label_acc_iDLG, alpha_star_iDLG, secs_elapsed_iDLG, rArgs.inversion_methods, rArgs.lock)
+    print(f"Finished image {idx_net}")
 
 def main(mArgs, rArgs):
     dataset = mArgs.dataset
     root_path = '.'
     # print(os.path.join(root_path, '../data').replace('\\', '/'))
     data_path = os.path.join(root_path, '../data').replace('\\', '/')
-    csvPath = os.path.join(rArgs.resultPath, "results.csv")
+    csvPath = os.path.join(rArgs.resultPath, f"results_{rArgs.image_index}.csv")
     init_csv_write(csvPath, rArgs.inversion_methods, rArgs.lock)
     log_path = os.path.join(rArgs.resultPath, 'log.txt')
     use_cuda = torch.cuda.is_available()
@@ -200,13 +243,22 @@ def main(mArgs, rArgs):
     ''' train DLG and iDLG '''
     m = multiprocessing.Manager()
     rArgs.lock = m.Lock()
-    max_workers = os.cpu_count()
+    print("Getting alpha star")
+    DLG_alpha_star, iDLG_alpha_star = get_alphas(rArgs.image_index, idx_shuffle, rArgs, mArgs, dst, net, criterion, num_classes, device)
+    # run_single_image(rArgs.image_index, idx_shuffle, rArgs, mArgs, log_path, csvPath, dst, net, criterion, num_classes, device, DLG_alpha_star, iDLG_alpha_star)
+    max_workers = 1
+    if "SLURM_CPUS_PER_TASK" in os.environ:
+        max_workers = int(os.environ["SLURM_CPUS_PER_TASK"])
+    else:
+        max_workers = os.cpu_count()
+    print("Starting Image Runs")
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = []
-        for idx_net in range(0, rArgs.num_exp):
+        for _ in range(0, rArgs.num_samples):
             futures.append(
-                    executor.submit(run_single_image, idx_net, idx_shuffle, rArgs, mArgs, log_path, csvPath, dst, net, criterion, num_classes, device)
+                    executor.submit(run_single_image, rArgs.image_index, idx_shuffle, rArgs, mArgs, log_path, csvPath, dst, net, criterion, num_classes, device, DLG_alpha_star, iDLG_alpha_star)
                 )
+            print(_, "submitted")
             
         for future in futures:
             try:
