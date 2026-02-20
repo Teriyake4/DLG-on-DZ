@@ -1,7 +1,10 @@
 import torch
 import time
 import math
+import numpy as np
+from scipy.stats import beta
 from matplotlib import pyplot as plt
+
 class BaseClosure:
     def __init__(self, optimizer, net, criterion, method, dummy_data, dummy_label, original_dy_dx):
         self.optimizer = optimizer
@@ -234,6 +237,57 @@ def bisection_search(lo, hi , eval_fn, num_evals, epsilon_squared, mse_z_ghat_0,
         
     return (hi,) + bound_dict['hi'] if is_pos else (lo,) + bound_dict['lo']
 
+def get_v_statistic(mses, epsilon_squared):
+    return sum(mses < epsilon_squared)
+
+def get_ci_bounds(mses, n, epsilon_squared, delta):
+    v = get_v_statistic(np.array(mses), epsilon_squared)
+    theta_l = beta.ppf(delta/2, v, n-v+1)
+    theta_u = beta.ppf(1-delta/2, v+1, n-v)
+    return theta_l, theta_u
+
+def get_ci_protection_output(alpha, epsilon_squared, eval_fn, num_init_samples, delta=0.1, tol=0.0000001):
+    init = True
+    mses = [eval_fn(alpha)[0] for _ in range(num_init_samples)]
+    theta_l, theta_u = get_ci_bounds(mses, num_init_samples, epsilon_squared, delta)
+    n = num_init_samples
+    equality_flag = False
+    while init or (epsilon_squared >= theta_l and epsilon_squared <= theta_u):
+        init = False
+        if theta_u - theta_l < tol:
+            equality_flag = True
+            break 
+        new_mse = eval_fn(alpha)[0]
+        mses.append(new_mse)
+        theta_l, theta_u = get_ci_bounds(mses, n+1, epsilon_squared, delta)
+        n += 1
+    if equality_flag:
+        return 'boundary'
+    elif epsilon_squared < theta_l:
+        return 'safe'
+    elif epsilon_squared > theta_u:
+        return 'unsafe'
+    else:
+        raise ValueError('This should never happen. Check the code for bugs.')
+    
+    
+def custom_bisection_search(lo, hi , eval_fn, num_evals, epsilon_squared, mse_z_ghat_0, verbose, ci_protection_num_init_samples, ci_protection_delta, ci_protection_tol, tol=0):
+    is_pos = hi > 0
+    lo, hi, bound_dict, num_evals = initialize_bounds(lo, hi, eval_fn, is_pos, num_evals, epsilon_squared, mse_z_ghat_0, verbose)
+    while lo < hi - tol and num_evals > 0:
+        mid = (lo + hi) / 2
+        is_protected = get_ci_protection_output(mid, epsilon_squared, eval_fn, ci_protection_num_init_samples, ci_protection_delta, ci_protection_tol)
+        num_evals -= 1
+        if verbose:
+            print(f'Evals remaning: {num_evals}, alpha:{mid}, protection_status:{is_protected}, lo:{lo}, hi:{hi}')
+        if is_protected == 'unsafe':
+            lo = mid
+        elif is_protected == 'safe':
+            hi = mid
+        else:
+            return mid
+    return hi if is_pos else lo
+
             
 def decide_between_neg_and_pos_alpha(alpha_pos, alpha_neg, mse_pos, mse_neg):
     if abs(alpha_neg) < alpha_pos:
@@ -264,9 +318,6 @@ def optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_
         else:
             raise ValueError('sign must be either `pos` or `neg')
         return bisection_search_eval_fn
-
-            
-    # alpha = 0
     mse_0, _, x_0, y_0 = inv_attack_closure(vanilla_dy_dx)
     if mse_0 >= epsilon_squared:
         # if the vanilla gradient (alpha=0) is already larger than the error tol, then we are satisfying the constraint and can't reduce alpha any further. return 
