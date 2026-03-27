@@ -155,14 +155,14 @@ def run_single_image(idx_net, idx_shuffle, rArgs, mArgs, log_path, csvPath, dst,
                     DLG_alpha_star = closures.optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
                                                         rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
                                                         rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
-                                                        device, num_classes, rArgs.printFreq)
+                                                        device, num_classes, rArgs.printFreq, rArgs.stock_args)
                 alpha_star = DLG_alpha_star
             elif method == 'iDLG':
                 if iDLG_alpha_star == None:
                     iDLG_alpha_star = closures.optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
                                                         rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
                                                         rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
-                                                        device, num_classes, rArgs.printFreq)
+                                                        device, num_classes, rArgs.printFreq, rArgs.stock_args)
                 alpha_star = iDLG_alpha_star
             
             zo_dy_dx_nudge = closures.nudge_estimate(zo_dy_dx, vanilla_dy_dx, alpha_star)

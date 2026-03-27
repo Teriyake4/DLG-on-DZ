@@ -47,12 +47,19 @@ class RunArgs:
         self.num_attack_iterations = 600 # Number of iterations within attack
         self.num_alpha_search_evals = 50
         self.epsilon_squared = epsilon_squared
-        self.exper_name = f'bisect_for_alpha_{dataset}_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
+        self.exper_name = f'stoch_bisect_for_alpha_{dataset}_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
         self.resultPath = os.path.join('.', f'results/1_{self.exper_name}/mu={mu_value}').replace('\\', '/')
         self.inversion_methods = ['iDLG']
         self.lock = Lock()
         os.makedirs(self.resultPath, exist_ok=True)
 
+
+epsilon_squared = 0.1
+num_alpha_search_iterations = 1000 # 100 if too long
+ci_protection_num_init_samples = 10 # 5 if too long
+ci_protection_delta = 0.1
+ci_protection_tau = 0.1
+ci_protection_tol = 0.01
 
 def run(p_value, mu_value, dataset, epsilon=0.1, image_index=None):
     mArgs = ModelArgs(p_value, mu_value, dataset)
