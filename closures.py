@@ -126,7 +126,7 @@ def optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_
         print(f'\nSearching for best alpha starting from FO-gradient and in the positive direction (towards ZO)...')
     # alpha_star_pos, mse_star_pos, x_inv_pos, y_inv_pos, ghat_alpha_star_pos = bisection_search(0, 1, get_bisection_search_eval_fn('pos'), num_pos_alpha_search_evals, epsilon_squared, 
     #                                                                       (mse_0, x_0, y_0, vanilla_dy_dx), verbose=verbose)
-    alpha_star_pos, search_history, status_history, eval_cnt_history, out_fold = custom_bisection_search(0, 1, get_bisection_search_eval_fn('pos'), num_alpha_search_iterations, epsilon_squared, 
+    alpha_star_pos, search_history, status_history, eval_cnt_history, out_fold = custom_bisection_search(method, 0, 1, get_bisection_search_eval_fn('pos'), num_alpha_search_iterations, epsilon_squared, 
                                                                                (mse_0, x_0, y_0, vanilla_dy_dx), True, ci_protection_num_init_samples, ci_protection_tau, ci_protection_delta, ci_protection_tol)
     print("Elpased time for alpha search: ", time.time() - start)
     return alpha_star_pos
@@ -275,14 +275,15 @@ def get_ci_protection_output(alpha, epsilon_squared, eval_fn, num_evals, num_ini
         elif tau < theta_l:
             return 'unsafe', num_evals
     
-def custom_bisection_search(lo, hi, eval_fn, num_evals, epsilon_squared, mse_z_ghat_0, verbose, ci_protection_num_init_samples, 
+def custom_bisection_search(method, lo, hi, eval_fn, num_evals, epsilon_squared, mse_z_ghat_0, verbose, ci_protection_num_init_samples, 
     ci_protection_tau, ci_protection_delta, ci_protection_tol, tol=0, log_root='ci_logs'):
-    exper_str = f'_epssq={epsilon_squared}_numevals={num_alpha_search_iterations}_ciinit={ci_protection_num_init_samples}_cidelta={ci_protection_delta}_citau={ci_protection_tau}_citol={ci_protection_tol}'
+    exper_str = f'{method}_epssq={epsilon_squared}_numevals={num_alpha_search_iterations}_ciinit={ci_protection_num_init_samples}_cidelta={ci_protection_delta}_citau={ci_protection_tau}_citol={ci_protection_tol}'
     run_id = time.strftime("%Y%m%d_%H%M%S") + '_' + exper_str
-    run_root = os.path.join(log_root, run_id)
+    run_root = os.path.join(log_root + "/test12", run_id)
+    print(run_root)
     os.makedirs(run_root, exist_ok=True)
     is_pos = hi > 0
-    lo, hi, _, num_evals = initialize_bounds(lo, hi, eval_fn, is_pos, num_evals, epsilon_squared, mse_z_ghat_0, verbose)
+    lo, hi, _, num_evals = initialize_bounds_b(lo, hi, eval_fn, is_pos, num_evals, epsilon_squared, mse_z_ghat_0, verbose)
     attempt = 0
     alpha_list = []
     protection_status_list = []

@@ -49,7 +49,7 @@ class RunArgs:
         self.epsilon_squared = epsilon_squared
         self.exper_name = f'stoch_bisect_for_alpha_{dataset}_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
         self.resultPath = os.path.join('.', f'results/1_{self.exper_name}/mu={mu_value}').replace('\\', '/')
-        self.inversion_methods = ['iDLG']
+        self.inversion_methods = ['iDLG', 'DLG']
         self.lock = Lock()
         os.makedirs(self.resultPath, exist_ok=True)
 
@@ -88,6 +88,7 @@ if __name__ == '__main__':
     mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
     # epsilon = [0.01, 0.005, 0.001, 0.0005, 0.0001]
     epsilon = [0.1, 0.01]
+    # epsilon = [0.1]
     alpha = [1]
     # mu = [1e-5]
     max_workers = 1
