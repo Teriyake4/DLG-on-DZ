@@ -213,21 +213,21 @@ def initialize_bounds_b(lo, hi, eval_fn, is_pos, num_evals, epsilon_squared, mse
     num_evals_init = num_evals
     init_range = hi - lo
     if is_pos:
-        mse, z, ghat = eval_fn(hi)
+        mse, x, y, ghat = eval_fn(hi)
         num_evals -= 1
         while mse < epsilon_squared and num_evals > 0:
             hi += init_range
-            mse, z, ghat = eval_fn(hi)
+            mse, x, y, ghat = eval_fn(hi)
             num_evals -= 1
-        bound_dict = {'lo':mse_z_ghat_0, 'hi':(mse, z, ghat)}
+        bound_dict = {'lo':mse_z_ghat_0, 'hi':(mse, x, y, ghat)}
     else:
-        mse, z, ghat = eval_fn(lo)
+        mse, x, y, ghat = eval_fn(lo)
         num_evals -= 1
         while mse > epsilon_squared and num_evals > 0: # remember epsilon_squared will be negative in this case
             lo -= init_range
-            mse, z, ghat = eval_fn(lo)
+            mse, x, y, ghat = eval_fn(lo)
             num_evals -= 1
-        bound_dict = {'lo':(mse, z, ghat), 'hi':mse_z_ghat_0}
+        bound_dict = {'lo':(mse, x, y, ghat), 'hi':mse_z_ghat_0}
     if num_evals <= 0:
         raise ValueError('Exceeded number of allowable evaluations during initialization of search bounds.')
     elif verbose:
@@ -279,7 +279,7 @@ def custom_bisection_search(method, lo, hi, eval_fn, num_evals, epsilon_squared,
     ci_protection_tau, ci_protection_delta, ci_protection_tol, tol=0, log_root='ci_logs'):
     exper_str = f'{method}_epssq={epsilon_squared}_numevals={num_alpha_search_iterations}_ciinit={ci_protection_num_init_samples}_cidelta={ci_protection_delta}_citau={ci_protection_tau}_citol={ci_protection_tol}'
     run_id = time.strftime("%Y%m%d_%H%M%S") + '_' + exper_str
-    run_root = os.path.join(log_root + "/test12", run_id)
+    run_root = os.path.join(log_root + "/test13", run_id)
     print(run_root)
     os.makedirs(run_root, exist_ok=True)
     is_pos = hi > 0
