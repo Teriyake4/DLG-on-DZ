@@ -41,12 +41,12 @@ class BaseClosure:
 
 # Getting Alpha
 
-epsilon_squared = 0.1
-num_alpha_search_iterations = 1000 # 100 if too long
-ci_protection_num_init_samples = 10 # 5 if too long
-ci_protection_delta = 0.1
-ci_protection_tau = 0.1
-ci_protection_tol = 0.01
+# epsilon_squared = 0.1
+# num_alpha_search_iterations = 1000 # 100 if too long
+# ci_protection_num_init_samples = 10 # 5 if too long
+# ci_protection_delta = 0.1
+# ci_protection_tau = 0.1
+# ci_protection_tol = 0.01
 
 def inv_attack(ghat, net, criterion, method, gt_data, gt_label,
                num_iterations, printfreq, num_dummy, result_path, imidx_list, tp, doplot, device, num_classes, 
@@ -95,9 +95,14 @@ def decide_between_neg_and_pos_alpha(alpha_pos, alpha_neg, mse_pos, mse_neg):
 
 def optimize_alpha(vanilla_dy_dx, zo_dy_dx, net, criterion, method, gt_data, gt_label,
                    num_attack_iterations, num_dummy, imidx_list,
-                   num_alpha_search_evals, epsilon_squared, verbose, 
+                   num_alpha_search_evals, epsilon_squared, ci_args, verbose, 
                    device, num_classes, printfreq):
     start = time.time()
+    num_alpha_search_iterations = ci_args["num_alpha_search_iterations"]
+    ci_protection_num_init_samples = ci_args["ci_protection_num_init_samples"]
+    ci_protection_tau = ci_args["ci_protection_tau"]
+    ci_protection_delta = ci_args["ci_protection_delta"]
+    ci_protection_tol = ci_args["ci_protection_tol"]
     inv_attack_closure = lambda ghat: inv_attack(ghat, net, criterion, method, gt_data, gt_label,
                                        num_attack_iterations, printfreq, num_dummy, None, 
                                        imidx_list, None, False, device, num_classes, verbose=False)
@@ -277,9 +282,9 @@ def get_ci_protection_output(alpha, epsilon_squared, eval_fn, num_evals, num_ini
     
 def custom_bisection_search(method, lo, hi, eval_fn, num_evals, epsilon_squared, mse_z_ghat_0, verbose, ci_protection_num_init_samples, 
     ci_protection_tau, ci_protection_delta, ci_protection_tol, tol=0, log_root='ci_logs'):
-    exper_str = f'{method}_epssq={epsilon_squared}_numevals={num_alpha_search_iterations}_ciinit={ci_protection_num_init_samples}_cidelta={ci_protection_delta}_citau={ci_protection_tau}_citol={ci_protection_tol}'
+    exper_str = f'{method}_epssq={epsilon_squared}_numevals={num_evals}_ciinit={ci_protection_num_init_samples}_cidelta={ci_protection_delta}_citau={ci_protection_tau}_citol={ci_protection_tol}'
     run_id = time.strftime("%Y%m%d_%H%M%S") + '_' + exper_str
-    run_root = os.path.join(log_root + "/test13", run_id)
+    run_root = os.path.join(log_root + "/run_01_", run_id)
     print(run_root)
     os.makedirs(run_root, exist_ok=True)
     is_pos = hi > 0

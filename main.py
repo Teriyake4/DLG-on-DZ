@@ -37,7 +37,7 @@ class ModelArgs:
         self.sample_size = 10000
 
 class RunArgs:
-    def __init__(self, mu_value, epsilon_squared, image_index, dataset):
+    def __init__(self, mu_value, epsilon_squared, image_index, dataset, ci_args):
         self.single = True
         self.printFreq = 20
         self.num_dummy = 1
@@ -47,23 +47,24 @@ class RunArgs:
         self.num_attack_iterations = 600 # Number of iterations within attack
         self.num_alpha_search_evals = 50
         self.epsilon_squared = epsilon_squared
+        self.ci_args = ci_args
         self.exper_name = f'stoch_bisect_for_alpha_{dataset}_numattit={self.num_attack_iterations}_epssq={self.epsilon_squared}_numalphasearchevals={self.num_alpha_search_evals}'
-        self.resultPath = os.path.join('.', f'results/1_{self.exper_name}/mu={mu_value}').replace('\\', '/')
+        self.resultPath = os.path.join('.', f'results/{self.exper_name}/mu={mu_value}').replace('\\', '/')
         self.inversion_methods = ['iDLG', 'DLG']
         self.lock = Lock()
         os.makedirs(self.resultPath, exist_ok=True)
 
 
-epsilon_squared = 0.1
-num_alpha_search_iterations = 1000 # 100 if too long
-ci_protection_num_init_samples = 10 # 5 if too long
-ci_protection_delta = 0.1
-ci_protection_tau = 0.1
-ci_protection_tol = 0.01
+# epsilon_squared = 0.1
+# num_alpha_search_iterations = 1000 # 100 if too long
+# ci_protection_num_init_samples = 10 # 5 if too long
+# ci_protection_delta = 0.1
+# ci_protection_tau = 0.1
+# ci_protection_tol = 0.01
 
-def run(p_value, mu_value, dataset, epsilon=0.1, image_index=None):
+def run(p_value, mu_value, dataset, ci_args, epsilon=0.1, image_index=None):
     mArgs = ModelArgs(p_value, mu_value, dataset)
-    rArgs = RunArgs(mu_value, epsilon, image_index, dataset)
+    rArgs = RunArgs(mu_value, epsilon, image_index, dataset, ci_args)
     main(mArgs, rArgs)
 
 if __name__ == '__main__':
@@ -83,14 +84,20 @@ if __name__ == '__main__':
 
     p = [1]
     # alpha = [0, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1]
-    mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
-    mu.extend(np.linspace(1e-15, 1e-17, 6)[1:-1].tolist())
-    mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
-    # epsilon = [0.01, 0.005, 0.001, 0.0005, 0.0001]
-    epsilon = [0.1, 0.01]
-    # epsilon = [0.1]
+    # mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-15, 1e-17, 1e-19, 1e-21, 1e-23, 1e-30]
+    # mu.extend(np.linspace(1e-15, 1e-17, 6)[1:-1].tolist())
+    # mu.extend(np.linspace(1e-9, 1e-15, 14)[1:-1].tolist())
+    mu = [1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11, 1e-12, 1e-13, 1e-14]
+    epsilon = [0.1, 0.01, 0.005, 0.001, 0.0005, 0.0001]
     alpha = [1]
-    # mu = [1e-5]
+    ci_args = {
+        "num_alpha_search_iterations": 1000,
+        "ci_protection_num_init_samples": 10,
+        "ci_protection_delta": 0.1,
+        "ci_protection_tau": 0.1,
+        "ci_protection_tol": 0.01
+    }
+
     max_workers = 1
     if "SLURM_CPUS_PER_TASK" in os.environ:
         max_workers = os.environ["SLURM_CPUS_PER_TASK"]
@@ -106,7 +113,7 @@ if __name__ == '__main__':
 
     for epsilon_value in epsilon:
         print(f"Epsilon value = {epsilon_value}")
-        run(float(p[0]), float(mu_value), args.dataset, float(epsilon_value), int(image_index))
+        run(float(p[0]), float(mu_value), args.dataset, ci_args, float(epsilon_value), int(image_index))
 
 
 
@@ -118,7 +125,7 @@ if __name__ == '__main__':
     #             for alpha_value in alpha:
     #                 # if os.path.isd
     #                 futures.append(executor.submit(run, p_value, mu_value))
-        
+
         # for future in futures:
         #     future.result()
                 # for gpu

@@ -90,13 +90,13 @@ def get_alphas(idx_net, idx_shuffle, rArgs, mArgs, dst, net, criterion, num_clas
         DLG_future = executor.submit(
             closures.optimize_alpha, vanilla_dy_dx, zo_dy_dx, net, criterion, 'DLG', gt_data, gt_label,
                                         rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
-                                        rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
+                                        rArgs.num_alpha_search_evals, rArgs.epsilon_squared, rArgs.ci_args, verbose, 
                                         device, num_classes, rArgs.printFreq
         )
         iDLG_future = executor.submit(
             closures.optimize_alpha, vanilla_dy_dx, zo_dy_dx, net, criterion, 'iDLG', gt_data, gt_label,
                                             rArgs.num_attack_iterations, rArgs.num_dummy, imidx_list,
-                                            rArgs.num_alpha_search_evals, rArgs.epsilon_squared, verbose, 
+                                            rArgs.num_alpha_search_evals, rArgs.epsilon_squared, rArgs.ci_args, verbose, 
                                             device, num_classes, rArgs.printFreq
             )
         DLG_alpha_star = DLG_future.result()
